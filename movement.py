@@ -542,12 +542,12 @@ class BugNav:
 				if(bestNextDir and bestNextScore > -20):
 					print(self.lastLocation.distance_squared(ct.get_position().add(bestDir).add(bestNextDir)))
 
-					if(self.lastBridgePos is not None and ct.is_in_vision(self.lastBridgePos) and (self.lastBridgePos.distance_squared(ct.get_position().add(bestDir)) >= 3 ) ):
+					if(self.lastBridgePos is not None and ct.is_in_vision(self.lastBridgePos) and (self.lastBridgePos.distance_squared(ct.get_position().add(bestDir)) >= 4 ) ):
 						bid1 = ct.get_tile_building_id(self.lastBridgePos)
 						bid2 = ct.get_tile_building_id(ct.get_position().add(bestDir))
 
-						# if(bid2 is not None and ct.get_entity_type(bid2) == EntityType.BRIDGE):
-							# bestNextDir = Direction.CENTRE
+						if(bid2 is not None and ct.get_entity_type(bid2) == EntityType.BRIDGE):
+							bestNextDir = Direction.CENTRE
 
 						if(bid1 is not None and ct.get_entity_type(bid1) == EntityType.BRIDGE):
 							self.lastBridgePos = ct.get_bridge_target(bid1)
@@ -574,6 +574,15 @@ class BugNav:
 								ct.move(bestDir)
 
 							return
+				else:
+					if( (self.lastBridgePos.distance_squared(ct.get_position().add(bestDir)) >= 4 )):
+						nextPos = ct.get_position().add(bestDir)
+						if(( ct.get_tile_building_id(nextPos) == None or  ct.get_team(ct.get_tile_building_id(nextPos)) == ct.get_team() ) and ct.can_build_bridge(self.lastBridgePos, nextPos)):
+							ct.build_bridge(self.lastBridgePos, nextPos)
+							self.lastBridgePos =  nextPos
+						if(ct.can_move(bestDir)):
+							ct.move(bestDir)
+						return
 
 
 
