@@ -621,23 +621,19 @@ class BugNav:
 					if(not self.canMoveBridge(ct, ct.get_position().add(dir))):
 						continue
 
-
 					if(ct.can_build_road(ct.get_position().add(dir))):
 						ct.build_road(ct.get_position().add(dir))
 						return
 
 					if(ct.can_move(dir) and self.lastBridgePos is not None and ct.is_in_vision(self.lastBridgePos) and self.lastBridgePos.distance_squared(ct.get_position().add(dir).add(dir)) >= 5):
-
+						ct.draw_indicator_line(self.lastBridgePos, ct.get_position().add(dir).add(dir), 255, 0, 255)
 						bid1 = ct.get_tile_building_id(self.lastBridgePos)
 						bid2 = ct.get_tile_building_id(ct.get_position().add(dir))
 
-						if(bid2 is not None and ct.get_entity_type(bid2) == EntityType.BRIDGE):
-							bestNextDir = Direction.CENTRE
 						if(bid1 is not None and ct.get_entity_type(bid1) == EntityType.BRIDGE):
 							self.lastBridgePos = ct.get_bridge_target(bid1)
 						if(bid1 is not None and ct.get_entity_type(bid1) == EntityType.ROAD and ct.can_destroy(self.lastBridgePos)):
 							ct.destroy(self.lastBridgePos)
-							
 						nextNextPos =  ct.get_position().add(dir).add(dir)
 						if(self.onTheMap(ct, nextNextPos)):
 							nextNextBuildingId = ct.get_tile_building_id(nextNextPos)
@@ -645,23 +641,23 @@ class BugNav:
 							nextBuildingId = None
 						nextPos = ct.get_position().add(dir)
 						nextBuildingId = ct.get_tile_building_id(nextPos)
-
+						builded = False
 						if(self.onTheMap(ct, nextNextPos) and (nextNextBuildingId == None or  ct.get_team(nextNextBuildingId) == ct.get_team() ) and  self.canMove(ct, nextNextPos) and ct.can_build_bridge(self.lastBridgePos, nextNextPos)):
 							ct.build_bridge(self.lastBridgePos, nextNextPos)
 							self.lastBridgePos =  nextNextPos
-						
+							builded = True
 						elif((nextBuildingId == None or  ct.get_team(nextBuildingId) == ct.get_team() ) and ct.can_build_bridge(self.lastBridgePos, nextPos)):
 							ct.build_bridge(self.lastBridgePos, nextPos)
 							self.lastBridgePos =  nextPos
+							builded = True
 						elif(ct.can_build_conveyor(self.lastBridgePos, self.toCardinal(dir))):
 							ct.build_conveyor(self.lastBridgePos, self.toCardinal(dir))
 							self.lastBridgePos =  self.lastBridgePos.add(self.toCardinal(dir))
-						
-						if(ct.can_move(dir)):
+							builded = True
+						if(builded and ct.can_move(dir)):
 							print("THIS MOVED")
 							ct.move(dir)
 						return
-
 
 					if(ct.can_move(dir)):
 						print("THIS MOVED")
@@ -696,8 +692,6 @@ class BugNav:
 						bid1 = ct.get_tile_building_id(self.lastBridgePos)
 						bid2 = ct.get_tile_building_id(ct.get_position().add(dir))
 
-						if(bid2 is not None and ct.get_entity_type(bid2) == EntityType.BRIDGE):
-							bestNextDir = Direction.CENTRE
 						if(bid1 is not None and ct.get_entity_type(bid1) == EntityType.BRIDGE):
 							self.lastBridgePos = ct.get_bridge_target(bid1)
 						if(bid1 is not None and ct.get_entity_type(bid1) == EntityType.ROAD and ct.can_destroy(self.lastBridgePos)):
@@ -709,19 +703,20 @@ class BugNav:
 							nextBuildingId = None
 						nextPos = ct.get_position().add(dir)
 						nextBuildingId = ct.get_tile_building_id(nextPos)
-
+						builded = False
 						if(self.onTheMap(ct, nextNextPos) and (nextNextBuildingId == None or  ct.get_team(nextNextBuildingId) == ct.get_team() ) and  self.canMove(ct, nextNextPos) and ct.can_build_bridge(self.lastBridgePos, nextNextPos)):
 							ct.build_bridge(self.lastBridgePos, nextNextPos)
 							self.lastBridgePos =  nextNextPos
-						
+							builded = True
 						elif((nextBuildingId == None or  ct.get_team(nextBuildingId) == ct.get_team() ) and ct.can_build_bridge(self.lastBridgePos, nextPos)):
 							ct.build_bridge(self.lastBridgePos, nextPos)
 							self.lastBridgePos =  nextPos
+							builded = True
 						elif(ct.can_build_conveyor(self.lastBridgePos, self.toCardinal(dir))):
 							ct.build_conveyor(self.lastBridgePos, self.toCardinal(dir))
 							self.lastBridgePos =  self.lastBridgePos.add(self.toCardinal(dir))
-						
-						if(ct.can_move(dir)):
+							builded = True
+						if(builded and ct.can_move(dir)):
 							print("THIS MOVED")
 							ct.move(dir)
 						return
