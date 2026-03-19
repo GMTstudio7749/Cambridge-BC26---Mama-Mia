@@ -579,22 +579,22 @@ class BugNav:
 								ct.move(bestDir)
 							if(builded):
 								return
-			else:
-				if(ct.can_build_road(ct.get_position().add(bestDir))):
-					ct.build_road(ct.get_position().add(bestDir))
-					return
-				builded = False
-				if( (self.lastBridgePos.distance_squared(ct.get_position().add(bestDir)) >= 4 )):
-					nextPos = ct.get_position().add(bestDir)
-					nextBuildingId = ct.get_tile_building_id(nextPos)
-					if(( nextBuildingId == None or  ct.get_team(nextBuildingId) == ct.get_team() ) and ct.can_build_bridge(self.lastBridgePos, nextPos)):
-						ct.build_bridge(self.lastBridgePos, nextPos)
-						self.lastBridgePos =  nextPos
-						builded  = True
-					if(builded and ct.can_move(bestDir)):
-						ct.move(bestDir)
-					if(builded):
+				else:
+					if(ct.can_build_road(ct.get_position().add(bestDir))):
+						ct.build_road(ct.get_position().add(bestDir))
 						return
+					builded = False
+					if( (self.lastBridgePos.distance_squared(ct.get_position().add(bestDir)) >= 4 )):
+						nextPos = ct.get_position().add(bestDir)
+						nextBuildingId = ct.get_tile_building_id(nextPos)
+						if(( nextBuildingId == None or  ct.get_team(nextBuildingId) == ct.get_team() ) and ct.can_build_bridge(self.lastBridgePos, nextPos)):
+							ct.build_bridge(self.lastBridgePos, nextPos)
+							self.lastBridgePos =  nextPos
+							builded  = True
+						if(builded and ct.can_move(bestDir)):
+							ct.move(bestDir)
+						if(builded):
+							return
 
 
 
