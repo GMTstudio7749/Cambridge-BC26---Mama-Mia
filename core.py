@@ -50,8 +50,8 @@ class Core():
 				self.state = "EXPANDING"
 
 		elif self.state == "EXPANDING":
+			pass
 			if self.glob_tit > 300 * self.builder_spawn:
 				self.CORE_spawn_builder(ct)
 
-		# Print to debug
 		print("State: " + self.state)
