@@ -152,7 +152,7 @@ class BugNav:
 			score -= 10
 		else:
 			if(info == EntityType.BRIDGE):
-				if(self.bridgeConnection[loc.x][loc.y] < 4):
+				if(self.bridgeConnection[loc.x][loc.y] < 4 and loc.distance_squared(target) > 20):
 					score += 8
 				else:
 					score -= 4
