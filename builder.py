@@ -1,117 +1,133 @@
 import random
 
-from cambc import Controller, Direction, EntityType, Environment, Position
-from robot import Robot
-from enum import Enum
+from cambc import Controller, EntityType, Environment, Position
 from movement import BugNav
+from utils import *
 
-class Builder(Robot):
+class Builder():
 	def __init__(self):
-		super().__init__()
-		self.state = "EXPLORE"
-		self.closest_building_ore = None
-		self.explore_pos = Position(1, -1)
-		self.cur_target = Position(1, -1)
-		self.pending_bridges = []
+		self.setup = False
 		self.is_returning = False
 
-	def DETERMINE_state(self, ct):
+		self.core_pos = Position(-1, -1)
+		self.pending_bridges = []
 
-		if(self.state == "BUILD_BACK_TO_CORE"):
-			return "BUILD_BACK_TO_CORE"
-		if(self.closest_building_ore is not None):
-			return "BUILD"
-		return "EXPLORE"
+		self.state = "EXPLORE"
+		self.closest_building_ore = Position(-1, -1)
+		self.explore_pos = Position(-1, -1)
 
+		self.bug_nav = BugNav()
 
-	def GOT_harvested(self, ct, tile_pos):
-		if(ct.is_in_vision(tile_pos)):
-			pos_id = ct.get_tile_building_id(tile_pos)
-			pos_env = ct.get_entity_type(pos_id)
-			return pos_env is not None and pos_env == EntityType.HARVESTER
-		else:
-			return False
+	def GET_core_pos(self, ct: Controller):
+		"""Get core position at first spawned"""
+		if self.core_pos != Position(-1, -1): return
+
+		nearby_building = ct.get_nearby_buildings(dist_sq = 2)
+		for bld in nearby_building:
+			if ct.get_entity_type(bld) == EntityType.CORE:
+				self.core_pos = ct.get_position(bld)
+				break
+
 	def GET_nearest_ore(self, ct: Controller):
-		my_pos = ct.get_position(ct.get_id())
-		nearby_tiles = ct.get_nearby_tiles()    
-		nearest_pos = None
-		min_dist = float('inf')
+		"""Get the nearest resource ore position\n
+		Return Position(-1, -1) if found nothing"""
+		my_pos = ct.get_position()
+		nearest_pos = Position(-1, -1)
+		min_dis = 999
+
+		nearby_tiles = ct.get_nearby_tiles()
 		for tile_pos in nearby_tiles:
 			env = ct.get_tile_env(tile_pos)
-			if env in [Environment.ORE_TITANIUM, Environment.ORE_AXIONITE]:
-				if(self.GOT_harvested(ct, tile_pos)):
-					continue
-				dist = my_pos.distance_squared(tile_pos)
-				if dist < min_dist:
-					min_dist = dist
-					nearest_pos = tile_pos         
+			if not env in Ore_Env: continue
+			if self.CHECK_harvester(ct, tile_pos):
+				continue
+
+			dis = my_pos.distance_squared(tile_pos)
+			if dis < min_dis:
+				min_dis = dis
+				nearest_pos = tile_pos
 		return nearest_pos
 
-	def RUN(self, ct):
+	def CHECK_harvester(self, ct: Controller, tile_pos: Position):
+		"""Check if a harvester is placed on a position\n
+		If out of vision, return True"""
+		if not ct.is_in_vision(tile_pos): return True
 
-		self.state = self.DETERMINE_state(ct)
-		if(self.state == "EXPLORE"):
-			self.EXPLORE_state(ct)
-		elif(self.state == "BUILD"):
-			self.BUILD_state(ct)
-		elif(self.state == "BUILD_BACK_TO_CORE"):
-			self.BUILD_BACK_state(ct)
-
-	def EXPLORE_state(self, ct):
-		if(self.explore_pos == Position(1, -1) or ct.get_position() == self.explore_pos):
+		pos_id = ct.get_tile_building_id(tile_pos)
+		pos_env = ct.get_entity_type(pos_id)
+		if pos_env != EntityType.HARVESTER:
+			return False
+		return True
+	
+	def BUILDER_explore(self, ct: Controller):
+		"""Builder robot explore function"""
+		if(self.explore_pos == Position(-1, -1) or ct.get_position() == self.explore_pos):
 			self.explore_pos = Position(random.randint(0, ct.get_map_width()-1), random.randint(0, ct.get_map_height()-1))
 		self.bug_nav.MOVE_to_target(ct, self.explore_pos, True)
 		self.closest_building_ore = self.GET_nearest_ore(ct)
 
-	def BUILD_state(self, ct):
-		if(self.GOT_harvested(ct, self.closest_building_ore)):
-			self.closest_building_ore = self.GET_nearest_ore(ct)
-			if self.closest_building_ore is None:
-				self.state = "BUILD_BACK_TO_CORE"
+	def BUILDER_build(self, ct: Controller):
+		"""Builder robot building function"""
+		if self.CHECK_harvester(ct, self.closest_building_ore):
+			self.closest_building_ore = Position(-1, -1)
 			return
+
 		dist_sq = ct.get_position().distance_squared(self.closest_building_ore)
 		if dist_sq <= 2:
 			if ct.can_build_harvester(self.closest_building_ore):
 				ct.build_harvester(self.closest_building_ore)
 				self.pending_bridges.append(self.closest_building_ore)
 				next_ore = self.GET_nearest_ore(ct)
-				if next_ore is not None:
+				if next_ore != Position(-1, -1):
 					self.closest_building_ore = next_ore
 				else:
-					self.closest_building_ore = None
+					self.closest_building_ore = Position(-1,-1)
 					self.state = "BUILD_BACK_TO_CORE"
 			return
 		self.bug_nav.MOVE_to_target(ct, self.closest_building_ore, False)
-	def is_connected_to_network(self, ct, pos):
-		nearby_tile = ct.get_nearby_tiles()
-		for tile in nearby_tile:
-			eid = ct.get_tile_building_id(tile)
-			if eid is not None:
-				etype = ct.get_entity_type(eid)
-				if etype == EntityType.BRIDGE or etype == EntityType.CORE:
-					if pos.distance_squared(tile) <= 2:
-						return True
-		return False
-	def BUILD_BACK_state(self, ct):
-			my_pos = ct.get_position()
-			dist_to_base = 0
-			if len(self.pending_bridges) > 0:
-				target_source = self.pending_bridges[0]
-				dist_to_source = my_pos.distance_squared(target_source)
-				dist_to_base = my_pos.distance_squared(self.core_pos)
-				if not self.is_returning:
-					if dist_to_source > 2:
-						self.bug_nav.MOVE_to_target(ct, target_source, True)
-						return
-					else:
-						self.is_returning = True
-				if self.is_returning:
-					self.bug_nav.MOVE_to_target_with_bridge(ct, self.core_pos)
-					if dist_to_base <= 2:
-						self.pending_bridges.pop(0)
-						self.is_returning = False
+
+	def BUILDER_back_core(self, ct: Controller):
+		"""Builder robot build bridge back to core"""
+		my_pos = ct.get_position()
+		dist_to_base = my_pos.distance_squared(self.core_pos)
+		if len(self.pending_bridges) > 0:
+			target_source = self.pending_bridges[0]
+			dist_to_source = my_pos.distance_squared(target_source)
+			if not self.is_returning:
+				if dist_to_source > 2:
+					self.bug_nav.MOVE_to_target(ct, target_source, True)
 					return
-			if dist_to_base <= 2 :
-				self.state = "EXPLORE"
-			else:
-				self.bug_nav.MOVE_to_target_with_bridge(ct, self.core_pos)	
+				else:
+					self.is_returning = True
+			if self.is_returning:
+				self.bug_nav.MOVE_to_target_with_bridge(ct, self.core_pos)
+				if dist_to_base <= 1:
+					self.pending_bridges.pop(0)
+					self.is_returning = False
+				return
+		if dist_to_base <= 1 :
+			self.state = "EXPLORE"
+		else:
+			self.bug_nav.MOVE_to_target_with_bridge(ct, self.core_pos)	
+
+	def BUILDER_run(self, ct: Controller):
+		"""Main builder robot runner"""
+		if not self.setup:
+			self.bug_nav.SETUP(ct)
+			self.GET_core_pos(ct)
+			self.setup = True
+
+		self.bug_nav.SENSE_nearby(ct)
+
+		if self.closest_building_ore != Position(-1, -1):
+			self.state = "BUILD"
+		elif self.state != "BUILD_BACK_TO_CORE":
+			self.state = "EXPLORE"
+		print(self.state)
+
+		if self.state == "EXPLORE":
+			self.BUILDER_explore(ct)
+		elif self.state == "BUILD":
+			self.BUILDER_build(ct)
+		elif self.state == "BUILD_BACK_TO_CORE":
+			self.BUILDER_back_core(ct)
