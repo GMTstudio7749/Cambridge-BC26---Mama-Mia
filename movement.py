@@ -28,6 +28,8 @@ class BugNav:
 		self.RIGHT = random.randint(0, 1)
 		self.lastBridgePos = None
 		self.lastMovedLocation = None
+		self.currentBridge = []
+		self.bridgeConnection = []
 
 	def SETUP(self, ct):
 		# run this in turn 1 pls
@@ -49,6 +51,16 @@ class BugNav:
 					self.mapInfos[pos.x][pos.y] = Environment.ORE_TITANIUM 
 				if(ct.get_tile_env(pos) == Environment.ORE_AXIONITE):
 					self.mapInfos[pos.x][pos.y] = Environment.ORE_AXIONITE
+
+		self.bridgeConnection =  [[0 for _ in range(ct.get_map_height())] for _ in range(ct.get_map_width())]
+		for pos in ct.get_nearby_tiles():
+			if(not self.onTheMap(ct, pos)):
+				continue
+			buildingId = ct.get_tile_building_id(pos)
+			if(buildingId is None or ct.get_team(buildingId) != ct.get_team()): continue
+			if(ct.get_entity_type(buildingId) != EntityType.BRIDGE): continue
+			targetPos = ct.get_bridge_target(buildingId)
+			self.bridgeConnection[targetPos.x][targetPos.y] += 1
 
 	def canMove(self, ct, loc):
 
@@ -139,12 +151,13 @@ class BugNav:
 			score -= 10
 		else:
 			if(info == EntityType.BRIDGE):
-				if(ct.get_position().distance_squared(target) > 20):
+				if(self.bridgeConnection[loc.x][loc.y] < 4):
 					score += 5
 				else:
-					score -= 1
+					score -= 4
+
 				if(self.lastBridgePos == loc):
-					score -= 20
+					score -= 40
 			if(info == EntityType.ROAD):
 				score += 4
 		if(info == EntityType.CORE or info == EntityType.CONVEYOR  or info == EntityType.ROAD) and ct.get_team(ct.get_tile_building_id(loc)) == ct.get_team():
@@ -511,6 +524,7 @@ class BugNav:
 		# MOVE to a pos with bridges connected
 
 
+
 		ct.draw_indicator_line(ct.get_position(), loc, 255, 0, 0)
 
 		ti = ct.get_global_resources()[0]
@@ -527,6 +541,10 @@ class BugNav:
 			self.bugStackIndex = 0
 			self.lastTargetLocation = loc
 			self.lastLocation = ct.get_position()
+			self.currentBridge = []
+		if(self.lastBridgePos is not None):
+			self.currentBridge.append(self.lastBridgePos)
+
 		if(self.lastTargetLocation != None and self.lastTargetLocation.distance_squared(loc) <= 8):
 			self.lastTargetLocation = loc
 
@@ -580,14 +598,14 @@ class BugNav:
 					bestNextNextDir, bestNextNextScore, nextNextLoc =  self.calcBestDirBridge( ct, ct.get_position().add(bestDir).add(bestNextDir), loc, ct.get_position().add(bestDir))
 
 
-				if ct.get_position().distance_squared(loc) > 2 and ct.is_in_vision(self.lastBridgePos) and (( self.lastLocation == self.lastBridgePos and self.currentLocation != self.lastBridgePos ) or self.currentLocation == self.lastBridgePos or bestNextLoc.distance_squared(self.lastBridgePos) > 2) :
+				if ct.get_position().distance_squared(loc) > 2 and ct.is_in_vision(self.lastBridgePos) and (( self.currentLocation == self.lastBridgePos) or self.currentLocation == self.lastBridgePos or bestNextLoc.distance_squared(self.lastBridgePos) > 2) :
 					print("THIS DOES RUn")
 
 					builded = False
 
 					bid1 = ct.get_tile_building_id(self.lastBridgePos)
 					if(bid1 is not None and ct.get_entity_type(bid1) == EntityType.BRIDGE):
-						self.lastBridgePos = ct.get_bridge_target(bid1)
+						self.lastBridgePos = ct.get_bridge_target(bid1)	
 						if(ct.can_move(ct.get_position().direction_to(self.lastBridgePos))):
 							ct.move(ct.get_position().direction_to(self.lastBridgePos))
 						return
@@ -595,13 +613,53 @@ class BugNav:
 					if(bid1 is not None and ct.get_entity_type(bid1) == EntityType.ROAD and ct.can_destroy(self.lastBridgePos)):
 						ct.destroy(self.lastBridgePos)
 
-					if(bestNextNextDir is not None and bestNextNextScore > -20):
 
+					if(not builded and bestNextNextDir is not None and bestNextNextScore > -20):
 						if(self.lastBridgePos is not None and ct.is_in_vision(self.lastBridgePos)):
 							nextNextNextPos =  ct.get_position().add(bestDir).add(bestNextDir).add(bestNextNextDir)
 							nextNextNextBuildingId = ct.get_tile_building_id(nextNextNextPos)
 
-							if((nextNextNextBuildingId is None or ct.get_team(nextNextNextBuildingId) == ct.get_team()) and ct.can_build_bridge(self.lastBridgePos, nextNextNextPos)):
+							if((nextNextNextBuildingId is not None and ct.get_team(nextNextNextBuildingId) == ct.get_team() and ct.get_entity_type(nextNextNextBuildingId) == EntityType.BRIDGE ) and ct.can_build_bridge(self.lastBridgePos, nextNextNextPos) and nextNextNextPos not in self.currentBridge):
+								print("THIS IS IMPORTANT")
+								print("THIS RUn 1 1")
+
+								ct.build_bridge(self.lastBridgePos, nextNextNextPos)
+								self.lastBridgePos = nextNextNextPos
+								builded = True			
+
+					if(not builded and bestNextLoc is not None and bestNextScore > -20):
+
+						if(self.lastBridgePos is not None and ct.is_in_vision(self.lastBridgePos) ):
+							nextNextPos =  ct.get_position().add(bestDir).add(bestNextDir)
+							nextNextBuildingId = ct.get_tile_building_id(nextNextPos)
+
+							if((nextNextBuildingId is not None and  ct.get_team(nextNextBuildingId) == ct.get_team() and ct.get_entity_type(nextNextBuildingId) == EntityType.BRIDGE ) and ct.can_build_bridge(self.lastBridgePos, nextNextPos)  and nextNextPos not in self.currentBridge):
+								print("THIS RUn 2 1")
+								ct.build_bridge(self.lastBridgePos, nextNextPos)
+								self.lastBridgePos = nextNextPos
+								builded = True
+
+
+
+					if(not builded and self.lastBridgePos is not None and ct.is_in_vision(self.lastBridgePos)):
+						nextPos =  ct.get_position().add(bestDir)
+						nextBuildingId = ct.get_tile_building_id(nextPos)
+
+						if(( nextBuildingId is not None and ct.get_team(nextBuildingId) == ct.get_team() and ct.get_entity_type(nextBuildingId) == EntityType.BRIDGE) and ct.can_build_bridge(self.lastBridgePos, nextPos)  and nextPos not in self.currentBridge):
+							print("THIS RUn 3 1")
+							ct.build_bridge(self.lastBridgePos, nextPos)
+							self.lastBridgePos = nextPos
+							builded = True
+
+
+
+
+					if(not builded and bestNextNextDir is not None and bestNextNextScore > -20):
+						if(self.lastBridgePos is not None and ct.is_in_vision(self.lastBridgePos)):
+							nextNextNextPos =  ct.get_position().add(bestDir).add(bestNextDir).add(bestNextNextDir)
+							nextNextNextBuildingId = ct.get_tile_building_id(nextNextNextPos)
+
+							if((nextNextNextBuildingId is None or ct.get_team(nextNextNextBuildingId) == ct.get_team()) and ct.can_build_bridge(self.lastBridgePos, nextNextNextPos)  and nextNextNextPos not in self.currentBridge):
 								print("THIS IS IMPORTANT")
 								print("THIS RUn 1")
 
@@ -615,7 +673,7 @@ class BugNav:
 							nextNextPos =  ct.get_position().add(bestDir).add(bestNextDir)
 							nextNextBuildingId = ct.get_tile_building_id(nextNextPos)
 
-							if((nextNextBuildingId is None  or ct.get_team(nextNextBuildingId) == ct.get_team()) and ct.can_build_bridge(self.lastBridgePos, nextNextPos)):
+							if((nextNextBuildingId is None  or ct.get_team(nextNextBuildingId) == ct.get_team()) and ct.can_build_bridge(self.lastBridgePos, nextNextPos)  and nextNextPos not in self.currentBridge):
 								print("THIS RUn 2")
 								ct.build_bridge(self.lastBridgePos, nextNextPos)
 								self.lastBridgePos = nextNextPos
@@ -628,7 +686,7 @@ class BugNav:
 							nextPos =  ct.get_position().add(bestDir)
 							nextBuildingId = ct.get_tile_building_id(nextPos)
 
-							if((nextBuildingId is None or ct.get_team(nextBuildingId) == ct.get_team()) and ct.can_build_bridge(self.lastBridgePos, nextPos)):
+							if((nextBuildingId is None or ct.get_team(nextBuildingId) == ct.get_team()) and ct.can_build_bridge(self.lastBridgePos, nextPos) and  nextPos not in self.currentBridge):
 								print("THIS RUn 3")
 								ct.build_bridge(self.lastBridgePos, nextPos)
 								self.lastBridgePos = nextPos
@@ -685,11 +743,20 @@ class BugNav:
 						nextPos = ct.get_position().add(dir)
 						nextBuildingId = ct.get_tile_building_id(nextPos)
 						builded = False
-						if(self.onTheMap(ct, nextNextPos) and (nextNextBuildingId == None or  ct.get_team(nextNextBuildingId) == ct.get_team() ) and  self.canMove(ct, nextNextPos) and ct.can_build_bridge(self.lastBridgePos, nextNextPos)):
+						
+						if(not builded and self.onTheMap(ct, nextNextPos) and (nextNextBuildingId is not None and  ct.get_team(nextNextBuildingId) == ct.get_team() and ct.get_entity_type(nextNextBuildingId) == EntityType.BRIDGE ) and  self.canMove(ct, nextNextPos) and ct.can_build_bridge(self.lastBridgePos, nextNextPos) and  nextNextPos not in self.currentBridge ):
 							ct.build_bridge(self.lastBridgePos, nextNextPos)
 							self.lastBridgePos =  nextNextPos
 							builded = True
-						elif((nextBuildingId == None or  ct.get_team(nextBuildingId) == ct.get_team() ) and ct.can_build_bridge(self.lastBridgePos, nextPos)):
+						if(not builded and self.onTheMap(ct, nextPos) and (nextBuildingId is not None and  ct.get_team(nextBuildingId) == ct.get_team() and ct.get_entity_type(nextBuildingId) == EntityType.BRIDGE ) and  self.canMove(ct, nextPos) and ct.can_build_bridge(self.lastBridgePos, nextPos))  and nextPos not in self.currentBridge:
+							ct.build_bridge(self.lastBridgePos, nextPos)
+							self.lastBridgePos =  nextPos
+							builded = True
+						if(not builded and self.onTheMap(ct, nextNextPos) and (nextNextBuildingId == None or  ct.get_team(nextNextBuildingId) == ct.get_team() ) and  self.canMove(ct, nextNextPos) and ct.can_build_bridge(self.lastBridgePos, nextNextPos) and nextNextPos not in self.currentBridge):
+							ct.build_bridge(self.lastBridgePos, nextNextPos)
+							self.lastBridgePos =  nextNextPos
+							builded = True
+						if(not builded and (nextBuildingId == None or  ct.get_team(nextBuildingId) == ct.get_team() ) and ct.can_build_bridge(self.lastBridgePos, nextPos)) and nextPos not in self.currentBridge:
 							ct.build_bridge(self.lastBridgePos, nextPos)
 							self.lastBridgePos =  nextPos
 							builded = True
@@ -723,14 +790,13 @@ class BugNav:
 					if(not self.canMoveBridge(ct, ct.get_position().add(dir))):
 						continue
 
-
 					if(ct.can_build_road(ct.get_position().add(dir))):
 						ct.build_road(ct.get_position().add(dir))
 						if(ct.get_position().distance_squared(self.lastBridgePos) < 10):
 							return
 
 					if(ct.can_move(dir) and self.lastBridgePos is not None and ct.is_in_vision(self.lastBridgePos) and self.lastBridgePos.distance_squared(ct.get_position().add(dir).add(dir)) >= 5):
-
+						ct.draw_indicator_line(self.lastBridgePos, ct.get_position().add(dir).add(dir), 255, 0, 255)
 						bid1 = ct.get_tile_building_id(self.lastBridgePos)
 						bid2 = ct.get_tile_building_id(ct.get_position().add(dir))
 
@@ -746,25 +812,32 @@ class BugNav:
 						nextPos = ct.get_position().add(dir)
 						nextBuildingId = ct.get_tile_building_id(nextPos)
 						builded = False
-						if(self.onTheMap(ct, nextNextPos) and (nextNextBuildingId == None or  ct.get_team(nextNextBuildingId) == ct.get_team() ) and  self.canMove(ct, nextNextPos) and ct.can_build_bridge(self.lastBridgePos, nextNextPos)):
+						
+						if(not builded and self.onTheMap(ct, nextNextPos) and (nextNextBuildingId is not None and  ct.get_team(nextNextBuildingId) == ct.get_team() and ct.get_entity_type(nextNextBuildingId) == EntityType.BRIDGE ) and  self.canMove(ct, nextNextPos) and ct.can_build_bridge(self.lastBridgePos, nextNextPos) and  nextNextPos not in self.currentBridge ):
 							ct.build_bridge(self.lastBridgePos, nextNextPos)
 							self.lastBridgePos =  nextNextPos
 							builded = True
-						elif((nextBuildingId == None or  ct.get_team(nextBuildingId) == ct.get_team() ) and ct.can_build_bridge(self.lastBridgePos, nextPos)):
+						if(not builded and self.onTheMap(ct, nextPos) and (nextBuildingId is not None and  ct.get_team(nextBuildingId) == ct.get_team() and ct.get_entity_type(nextBuildingId) == EntityType.BRIDGE ) and  self.canMove(ct, nextPos) and ct.can_build_bridge(self.lastBridgePos, nextPos)) and nextPos not in self.currentBridge:
 							ct.build_bridge(self.lastBridgePos, nextPos)
 							self.lastBridgePos =  nextPos
 							builded = True
-	
+						if(not builded and self.onTheMap(ct, nextNextPos) and (nextNextBuildingId == None or  ct.get_team(nextNextBuildingId) == ct.get_team() ) and  self.canMove(ct, nextNextPos) and ct.can_build_bridge(self.lastBridgePos, nextNextPos) and nextNextPos not in self.currentBridge):
+							ct.build_bridge(self.lastBridgePos, nextNextPos)
+							self.lastBridgePos =  nextNextPos
+							builded = True
+						if(not builded and (nextBuildingId == None or  ct.get_team(nextBuildingId) == ct.get_team() ) and ct.can_build_bridge(self.lastBridgePos, nextPos)) and nextPos not in self.currentBridge:
+							ct.build_bridge(self.lastBridgePos, nextPos)
+							self.lastBridgePos =  nextPos
+							builded = True
+
 						if(builded and ct.can_move(dir)):
 							print("THIS MOVED")
 							ct.move(dir)
 						if(builded or ct.get_action_cooldown() != 0):
 							return
 
-
 					if(ct.can_move(dir)):
 						print("THIS MOVED")
 						ct.move(dir)
 						return
-
 				dir = dir.rotate_left()
