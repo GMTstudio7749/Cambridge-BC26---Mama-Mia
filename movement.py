@@ -237,6 +237,8 @@ class BugNav:
 				# score2 += 1
 		# 	else:
 		# 		score3 += 1
+
+
 		if(self.canMoveBridge(ct, currentLoc.add(dirToTarget)) and score1 > bestScore and not currentLoc.add(dirToTarget) == lastLoc):
 			bestDir = dirToTarget
 			bestScore = score1
@@ -580,7 +582,6 @@ class BugNav:
 			bestDir, bestScore, dirToTarget = self.calcBestDirBridge(ct, ct.get_position(), loc, self.lastLocation)
 
 			if(bestDir is not None and bestScore > -20):
-
 				if(ct.can_build_road(ct.get_position().add(bestDir))):
 					ct.build_road(ct.get_position().add(bestDir))
 					return
@@ -590,17 +591,22 @@ class BugNav:
 				bestNextLoc = ct.get_position().add(bestDir)
 				bestNextDir, bestNextScore, nextDirToTarget = self.calcBestDirBridge( ct, ct.get_position().add(bestDir), loc, ct.get_position())
 
+
+
 				bestNextNextLoc = None
 				bestNextNextDir, bestNextNextScore, nextNextLoc = [None, None, None]
 
 				if(bestNextDir is not None):
 					bestNextNextLoc = ct.get_position().add(bestDir).add(bestNextDir)
 					bestNextNextDir, bestNextNextScore, nextNextLoc =  self.calcBestDirBridge( ct, ct.get_position().add(bestDir).add(bestNextDir), loc, ct.get_position().add(bestDir))
+				nextPos =  ct.get_position().add(bestDir)
+				nextBuilderBotId = ct.get_tile_builder_bot_id(nextPos)
+
+				if(nextBuilderBotId is not None ):
+					return
 
 
-
-
-				if ct.get_position().distance_squared(loc) > 2 and ct.is_in_vision(self.lastBridgePos) and (( self.currentLocation == self.lastBridgePos) or self.currentLocation == self.lastBridgePos or bestNextLoc.distance_squared(self.lastBridgePos) > 2) :
+				if ct.get_position().distance_squared(loc) > 2 and ct.is_in_vision(self.lastBridgePos) and (( self.lastLocation == self.lastBridgePos) or self.currentLocation == self.lastBridgePos or bestNextLoc.distance_squared(self.lastBridgePos) > 2) :
 					print("THIS DOES RUn")
 
 					builded = False
