@@ -1,5 +1,105 @@
 import random
 from cambc import Controller, Direction, EntityType, Environment, Position
+from utils import *
+
+class Explore:
+	def __init__(self):
+		self.MAP_WIDTH = -1
+		self.MAP_HEIGHT = -1
+
+		self.setup = False
+		self.Explore_Dir = Direction.CENTRE
+		self.Explore_Target = Position(-1, -1)
+		self.Explore_Turn = -1
+
+		self.bugnav = BugNav()
+	
+	def EXPLORE_setup(self, ct: Controller, spawn_pos: Position, core_pos: Position):
+		"""Setup explore move function infos and const, along with bugnav"""
+		self.bugnav.SETUP(ct)
+		self.MAP_WIDTH = ct.get_map_width()
+		self.MAP_HEIGHT = ct.get_map_height()
+
+		sx, sy = spawn_pos.x, spawn_pos.y
+		cx, cy = core_pos.x, core_pos.y
+		if sx < cx and sy < cy:
+			self.Explore_Dir = Direction.NORTHWEST
+		elif sx < cx and sy > cy:
+			self.Explore_Dir = Direction.SOUTHWEST
+		elif sx > cx and sy < cy:
+			self.Explore_Dir = Direction.NORTHEAST
+		else:
+			self.Explore_Dir = Direction.SOUTHEAST
+
+	def IS_in_map(self, x: int, y: int):
+		"""Check if two int x, y is located in map"""
+		if x < 0 or x >= self.MAP_WIDTH or y < 0 or y >= self.MAP_HEIGHT:
+			return False
+		return True
+
+	def GET_next_bounce_dir(self, dir: Direction, edge_pos: Position):
+		"""Get the next bounce dir depends on current dir and edge pos"""
+		if dir not in Diagonal_Dirs:
+			return random.choice(Diagonal_Dirs)
+		
+		bounce_dir = dir.opposite()
+		for _ in range(4):
+			bounce_dir = bounce_dir.rotate_right().rotate_right()
+			
+			dx, dy = bounce_dir.delta()
+			nx, ny = edge_pos.x + dx, edge_pos.y + dy
+			if not self.IS_in_map(nx, ny): continue
+			return bounce_dir
+
+		return random.choice(Diagonal_Dirs)	
+	
+	def GET_next_explore_target(self, ct: Controller, dir: Direction):
+		"""Get the next explore target, depends on dir and position\n
+		if dir = Direction.CENTRE -> just random a diagonal dir"""
+		X, Y = self.Explore_Target.x, self.Explore_Target.y
+		if X < 0 or Y < 0:
+			X, Y = ct.get_position().x, ct.get_position().y
+
+		if dir == Direction.CENTRE:
+			dir = random.choice(Diagonal_Dirs)
+		elif not dir in Diagonal_Dirs:
+			dir = dir.rotate_right()
+		
+		dx, dy = dir.delta()
+		while self.IS_in_map(X + dx, Y + dy):
+			X += dx
+			Y += dy
+
+		return Position(X, Y)
+
+	def MOVE_explore(self, ct: Controller, range_squared: int, max_turn: int):
+		"""Explore movement function, reset max_turn rounds\n
+		Move to an accepted range within the explore target"""
+		if self.Explore_Target == Position(-1, -1):
+			self.Explore_Target = self.GET_next_explore_target(ct, self.Explore_Dir)
+			self.Explore_Turn = max_turn
+
+		my_pos = ct.get_position()
+		cur_dis = my_pos.distance_squared(self.Explore_Target)
+		if cur_dis <= range_squared or self.Explore_Turn < 1:
+			self.Explore_Turn = max_turn
+			self.Explore_Dir = self.GET_next_bounce_dir(self.Explore_Dir, self.Explore_Target)
+			self.Explore_Target = self.GET_next_explore_target(ct, self.Explore_Dir)
+
+		if ct.get_move_cooldown() == 0:
+			self.Explore_Turn = self.Explore_Turn - 1
+			self.bugnav.SENSE_nearby(ct)
+			self.bugnav.MOVE_to_target(ct, self.Explore_Target, False)
+
+		print("\n=== MOVE EXPLORE INFO ===")
+		print("Dir:", self.Explore_Dir)
+		print("Pos:", self.Explore_Target)
+		print("Turn:", self.Explore_Turn)
+		print("Cur_Dis: ", cur_dis)
+		print("\n")
+		ct.draw_indicator_dot(self.Explore_Target, 100, 100, 255)
+import random
+from cambc import Controller, Direction, EntityType, Environment, Position
 
 class BugNav:
 	def __init__(self):
@@ -93,13 +193,12 @@ class BugNav:
 	def getAdjacentAllies(self, ct, loc):
 		return 0
 
-	def tileScore(self, ct, loc, ignoreEmpty):
-		return self.tileScoreBool(ct, loc, ignoreEmpty, False)
+	def tileScore(self, ct, loc, preferTile, emptyScore):
+		return self.tileScoreBool(ct, loc, preferTile, emptyScore, False)
 
-	def tileScoreBool(self, ct, loc, ignoreEmpty, checkAllyBehind):
+	def tileScoreBool(self, ct, loc, preferTile, emptyScore, checkAllyBehind):
 		if(not self.onTheMap(ct, loc)):
 			return -99999
-		emptyPenalty = 0 if ignoreEmpty else 3
 		score = 0
 		info = self.mapInfos[loc.x][loc.y]
 		if(self.tooCloseToDanger(ct, loc)):
@@ -108,11 +207,19 @@ class BugNav:
 		# 	for enemyTower in mapData.enemyDefenseTowers.getArray():
 		# 		if(enemyTower.location.distance_squared_to(loc) <= enemyTower.type.action_radius_squared):
 		# 			score -= 10000
-		# 			break
+					# break
 
 		if(info == EntityType.CORE or info == EntityType.CONVEYOR  or info == EntityType.ROAD):
-			score -= self.getAdjacentAllies(ct, loc)
+			if(ct.get_team(ct.get_tile_building_id(loc))  == ct.get_team()):
+				if(preferTile >= 0):
+					score += preferTile
+			else:
+				if(preferTile <= 0):
+					score -= preferTile
+
 			return score
+
+
 		# allyBehind = False
 		# if(checkAllyBehind):
 		# 	dirToTile  = get_location().direction_to(loc)
@@ -124,9 +231,9 @@ class BugNav:
 		# 		(on_the_map(loc2) and mapData.getMapInfo(loc2).get_paint().is_ally()) or
 		# 		(on_the_map(loc3) and mapData.getMapInfo(loc3).get_paint().is_ally()))
 		if(info == Environment.EMPTY):
-			score -= 0
+			score += emptyScore
 		if(info == Environment.ORE_AXIONITE or info == Environment.ORE_TITANIUM):
-			score -= 2
+			score -= 20
 			# if(not allyBehind): score -= 2
 		# allyBehind = False
 		return score
@@ -138,7 +245,7 @@ class BugNav:
 	def tileScoreBridgeBool(self, ct, loc, target, ignoreEmpty, checkAllyBehind):
 		if(not self.onTheMap(ct, loc)):
 			return -99999
-		emptyPenalty = 0 if ignoreEmpty else 3
+		emptyScore = 0 if ignoreEmpty else 3
 		score = 0
 		info = self.mapInfos[loc.x][loc.y]
 		if(self.tooCloseToDanger(ct, loc)):
@@ -153,7 +260,7 @@ class BugNav:
 		else:
 			if(info == EntityType.BRIDGE):
 				if(loc.distance_squared(target) < 20):
-					pass
+					score -= 1
 				elif(self.bridgeConnection[loc.x][loc.y] < 4):
 					score += 8
 				else:
@@ -252,158 +359,7 @@ class BugNav:
 			bestScore = score3
 		return [bestDir, bestScore, dirToTarget]
 
-	def MOVE_to_target_conveyor(self, ct, loc: Position):
-		# THIS HERE THIS IS IMPORTANT
-		# EXPLORE USING CONVEYOR + BRIDGE only, no road
-		ct.draw_indicator_line(ct.get_position(), loc, 255, 0, 0)
-
-		if(ct.get_move_cooldown() != 0 or ct.get_action_cooldown() != 0): return
-
-		self.lastLocation = self.currentLocation
-		self.currentLocation = ct.get_position()
-
-		if(self.lastTargetLocation == None or self.lastTargetLocation != loc):
-			self.lastBridgePos = loc
-
-		if(self.lastTargetLocation == None or self.lastTargetLocation.distance_squared(loc) > 8 or self.bugStackIndex >= self.MAX_STACK_SIZE-10):
-			self.bugStack = [None] * self.MAX_STACK_SIZE
-			self.bugStackIndex = 0
-			self.lastTargetLocation = loc
-			self.lastLocation = ct.get_position()
-		if(self.lastTargetLocation != None and self.lastTargetLocation.distance_squared(loc) <= 8):
-			self.lastTargetLocation = loc
-
-		while (
-			self.bugStackIndex != 0 and
-			(
-				(
-					self.canMove(ct, ct.get_position().add(self.bugStack[self.bugStackIndex - 1])) and
-					not self.tooCloseToDanger(ct, ct.get_position().add(self.bugStack[self.bugStackIndex - 1]))
-				)
-				or
-				(
-					self.bugStackIndex > 1 and
-					self.canMove(ct, ct.get_position().add( self.bugStack[self.bugStackIndex - 2])) and
-					not self.tooCloseToDanger(ct, ct.get_position().add(self.bugStack[self.bugStackIndex - 2])) and
-					not (
-						self.lastLocation is not None and
-						ct.get_position().add(self.bugStack[self.bugStackIndex - 2]) == self.lastLocation
-					)
-				)
-			)
-		):
-			self.bugStackIndex -= 1
-
-		if(self.reachableFrom(ct, ct.get_position(), loc)):
-			self.bugStack = [None] * self.MAX_STACK_SIZE
-			self.bugStackIndex = 0
-
-		if(self.bugStackIndex == 0):
-			dirToTarget = ct.get_position().direction_to(loc)
-			bestDir = None
-			bestScore = -9999
-			ignoreEmpty = ct.get_entity_type() == EntityType.BUILDER_BOT
-			score1 = self.tileScore(ct, ct.get_position().add(dirToTarget), ignoreEmpty)
-			score2 = self.tileScore(ct, ct.get_position().add(dirToTarget.rotate_left()), ignoreEmpty)
-			score3 = self.tileScore(ct, ct.get_position().add(dirToTarget.rotate_right()), ignoreEmpty)
-
-
-			if(dirToTarget == self.toCardinal(dirToTarget)):
-				score1 += 1
-			if(dirToTarget.rotate_left() == self.toCardinal(dirToTarget.rotate_left())):
-				score2 += 1
-			if(dirToTarget.rotate_right() == self.toCardinal(dirToTarget.rotate_right())):
-				score3 += 1
-			# if(self.dir_order.index(dirToTarget) % 2 == 0 and ct.get_position().distance_squared(loc) > 50):
-			# 	if(ct.get_current_round()%4 < 2):
-			# 		score2 += 1
-			# 	else:
-			# 		score3 += 1
-			if(self.canMove(ct, ct.get_position().add(dirToTarget)) and score1 > bestScore and not ct.get_position().add(dirToTarget) == self.lastLocation):
-				bestDir = dirToTarget
-				bestScore = score1
-			if(self.canMove(ct, ct.get_position().add(dirToTarget.rotate_left())) and score2 > bestScore and not ct.get_position().add(dirToTarget.rotate_left()) == self.lastLocation):
-				bestDir = dirToTarget.rotate_left()
-				bestScore = score2
-			if(self.canMove(ct, ct.get_position().add(dirToTarget.rotate_right())) and score3 > bestScore and not ct.get_position().add(dirToTarget.rotate_right()) == self.lastLocation):
-				bestDir = dirToTarget.rotate_right()
-				bestScore = score3
-
-
-			if(bestDir is not None and bestScore > -20):
-				if(self.toCardinal(bestDir) == bestDir):
-					if(ct.can_build_conveyor(ct.get_position().add(bestDir), self.toCardinal(bestDir).opposite())):
-						ct.build_conveyor(ct.get_position().add(bestDir),  self.toCardinal(bestDir).opposite())
-				else:
-					if(ct.can_build_bridge(ct.get_position().add(bestDir), ct.get_position().add(bestDir.opposite()))):
-						ct.build_bridge(ct.get_position().add(bestDir), ct.get_position())
-				if(ct.can_move(bestDir)):
-					ct.move(bestDir)
-					return
-			self.bugStack[self.bugStackIndex] = (dirToTarget.rotate_left() if self.RIGHT else dirToTarget.rotate_right())
-			self.bugStackIndex += 1;
-		if(self.RIGHT):
-			dir = self.bugStack[self.bugStackIndex-1].rotate_right()
-			for i in range(8):
-				if(not self.canMove(ct, ct.get_position().add(dir)) or self.tooCloseToDanger(ct, ct.get_position().add(dir)) ):
-					if(not self.onTheMap(ct, ct.get_position().add(dir))):
-						self.bugStack = [None] * self.MAX_STACK_SIZE
-						self.bugStackIndex = 0
-						self.RIGHT = not self.RIGHT
-						break
-					self.bugStack[self.bugStackIndex] = dir
-					self.bugStackIndex += 1
-
-				else:
-					if(not self.canMove(ct, ct.get_position().add(dir))):
-						continue
-					# if(ct.can_build_road(ct.get_position().add(dir))):
-					# 	ct.build_road(ct.get_position().add(dir))
-					if(self.toCardinal(dir) == dir):
-						if(ct.can_build_conveyor(ct.get_position().add(dir), self.toCardinal(dir).opposite())):
-							ct.build_conveyor(ct.get_position().add(dir),  self.toCardinal(dir).opposite())
-					else:
-						if(ct.can_build_bridge(ct.get_position().add(dir), ct.get_position().add(dir.opposite()))):
-							ct.build_bridge(ct.get_position().add(dir), ct.get_position())
-
-					# if(ct.can_build_conveyor(ct.get_position().add(dir), self.toCardinal(dir).opposite())):
-						# ct.build_conveyor(ct.get_position().add(dir),  self.toCardinal(dir).opposite())
-
-					if(ct.can_move(dir)):
-						ct.move(dir)
-						return
-				dir = dir.rotate_right()
-		else:
-			dir = self.bugStack[self.bugStackIndex-1].rotate_left()
-			for i in range(8):
-				if(not self.canMove(ct, ct.get_position().add(dir)) or self.tooCloseToDanger(ct, ct.get_position().add(dir)) ):
-					if(not self.onTheMap(ct, ct.get_position().add(dir))):
-						self.bugStack = [None] * self.MAX_STACK_SIZE
-						self.bugStackIndex = 0
-						self.RIGHT = not self.RIGHT
-						break
-					self.bugStack[self.bugStackIndex] = dir
-					self.bugStackIndex += 1
-
-				else:
-					if(not self.canMove(ct, ct.get_position().add(dir))):
-						continue
-					# if(ct.can_build_road(ct.get_position().add(dir))):
-						# ct.build_road(ct.get_position().add(dir))
-					if(self.toCardinal(dir) == dir):
-						if(ct.can_build_conveyor(ct.get_position().add(dir), self.toCardinal(dir).opposite())):
-							ct.build_conveyor(ct.get_position().add(dir),  self.toCardinal(dir).opposite())
-					else:
-						if(ct.can_build_bridge(ct.get_position().add(dir), ct.get_position().add(dir.opposite()))):
-							ct.build_bridge(ct.get_position().add(dir), ct.get_position())
-							
-					if(ct.can_move(dir)):
-						ct.move(dir)
-						return
-				dir = dir.rotate_left()
-
-
-	def MOVE_to_target(self, ct, loc: Position, zigzag: bool):
+	def MOVE_to_target(self, ct, loc: Position, zigzag: bool, preferTile=0, emptyScore=-4):
 		# THIS HERE, EXPLORE USING ROAD ONLY, NO CONVEYOR BUILD
 
 		ct.draw_indicator_line(ct.get_position(), loc, 255, 0, 0)
@@ -451,9 +407,9 @@ class BugNav:
 			bestDir = None
 			bestScore = -9999
 			ignoreEmpty = ct.get_entity_type() == EntityType.BUILDER_BOT
-			score1 = self.tileScore(ct, ct.get_position().add(dirToTarget), ignoreEmpty)
-			score2 = self.tileScore(ct, ct.get_position().add(dirToTarget.rotate_left()), ignoreEmpty)
-			score3 = self.tileScore(ct, ct.get_position().add(dirToTarget.rotate_right()), ignoreEmpty)
+			score1 = self.tileScore(ct, ct.get_position().add(dirToTarget),  preferTile, ignoreEmpty)
+			score2 = self.tileScore(ct, ct.get_position().add(dirToTarget.rotate_left()), preferTile, ignoreEmpty)
+			score3 = self.tileScore(ct, ct.get_position().add(dirToTarget.rotate_right()),  preferTile, ignoreEmpty)
 
 			if(zigzag):
 				if(self.dir_order.index(dirToTarget) % 2 == 0 and ct.get_position().distance_squared(loc) > 50):
