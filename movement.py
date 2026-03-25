@@ -407,6 +407,10 @@ class BugNav:
 		bestDir = None
 		bestScore = -9999
 
+		if(cur_pos.distance_squared(loc) < 30):
+			allyScore -= 5
+			emptyScore += 5
+
 		dir1 = dirToTarget
 		dir2 = dirToTarget.rotate_left()
 		dir3 = dirToTarget.rotate_right()
@@ -419,7 +423,14 @@ class BugNav:
 			score2 += 4
 		if(dir3 == self.toCardinal(dir3)):
 			score3 += 4
-		
+
+		if(cur_pos.add(dir1).distance_squared(loc) <= 2):
+			score1 += 10
+		if(cur_pos.add(dir2).distance_squared(loc) <= 2):
+			score2 += 10
+		if(cur_pos.add(dir3).distance_squared(loc) <= 2):
+			score3 += 10
+
 		ct.draw_indicator_line(cur_pos.add(dir1), cur_pos, 255, 255, 255)
 		ct.draw_indicator_line(cur_pos.add(dir2), cur_pos, 255, 255, 255)
 		ct.draw_indicator_line(cur_pos.add(dir3), cur_pos, 255, 255, 255)
