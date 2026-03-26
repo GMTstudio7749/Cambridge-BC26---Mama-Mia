@@ -268,6 +268,7 @@ class BugNav:
 	def MOVE_to_target(self, ct, loc: Position, zigzag: bool, allyScore=0, enemyScore=0, emptyScore=-2):
 		# THIS HERE, EXPLORE USING ROAD ONLY, NO CONVEYOR BUILD
 
+		ct.draw_indicator_line(ct.get_position(), loc, 255, 0, 0)
 
 		if(not ct.get_move_cooldown() == 0): return
 
@@ -452,6 +453,8 @@ class BugNav:
 		bteam = ct.get_team(bid)
 
 		nextPos = pos.add(dir)
+		if(not self.onTheMap(ct, nextPos)):
+			return False
 		nextBid = ct.get_tile_building_id(nextPos)
 		nextBtype = ct.get_entity_type(nextBid)
 		nextBteam = ct.get_team(nextBid)
@@ -462,6 +465,7 @@ class BugNav:
 
 
 		if(nextBid is not None and nextBteam != ct.get_team()) or not self.canMove(ct, nextPos):
+			print("THIS?")
 			return
 
 		if(bid is None):
@@ -475,6 +479,7 @@ class BugNav:
 		elif(btype == EntityType.ROAD):
 			if(ct.can_destroy(pos)):
 				ct.destroy(pos)
+				print("SO BAD")
 				if(ct.can_build_conveyor(pos, dir)):
 					ct.build_conveyor(pos, dir)
 					if(save):
@@ -524,6 +529,9 @@ class BugNav:
 			return False
 		if(self.lastTargetLocation is not None and len(self.currentConnections) > 2 and self.lastTargetLocation.direction_to(self.currentConnections[-2]) == dir):
 			return False
+		if(self.lastTargetLocation is not None and len(self.currentConnections) > 2):
+			ct.draw_indicator_line(self.lastLocation, self.currentConnections[-2], 100, 100, 150)
+			# print(self.lastTargetLocation.direction_to(self.currentConnections[-2]))
 
 		if(not self.onTheMap(ct, loc) or not ct.is_in_vision(loc)):
 			return False
@@ -532,6 +540,7 @@ class BugNav:
 		nextBtype = ct.get_entity_type(nextBid)
 		nextBteam = ct.get_team(nextBid)
 
+		ct.draw_indicator_line(loc, ct.get_position(), 255, 100, 255)
 		if(not self.canMove(ct, loc)):
 			return False
 
@@ -540,6 +549,7 @@ class BugNav:
 		x = loc.x
 		y = loc.y
 		if(self.mapInfos[x][y] == Environment.WALL or self.mapInfos[x][y] == Environment.ORE_AXIONITE or self.mapInfos[x][y] == Environment.ORE_TITANIUM):
+			print("THIS IS BAD")
 
 			return False
 		if(self.mapInfos[x][y] == Environment.EMPTY):
@@ -547,16 +557,21 @@ class BugNav:
 		if(nextBtype == EntityType.CORE):
 			return True
 		if(nextBtype == EntityType.CONVEYOR):
+			ct.draw_indicator_line(Position(0, 0), loc.add(ct.get_direction(nextBid)), 25, 105, 225)
+			ct.draw_indicator_line(Position(0, 0), loc, 25, 105, 225)
 			if(ct.get_direction(nextBid) == dir.opposite()):
 				print(loc, ct.get_direction(nextBid), dir.opposite())
 				return False
 		if(nextBtype == EntityType.BRIDGE):
 			if(ct.get_bridge_target(nextBid) == ct.get_position()):
 				return False
+		print(loc)
 		return True
 
 	def tryDirWithConveyor(self, ct, dir):
+		print(dir)
 		nextPos = ct.get_position().add(dir)
+		ct.draw_indicator_line(ct.get_position(), nextPos, 255, 255, 255)
 		if(dir == self.toCardinal(dir)):
 			self.tryBuildConveyor(ct, self.lastConnect, dir)
 		else:
@@ -571,6 +586,7 @@ class BugNav:
 	def MOVE_to_target_with_conveyor(self, ct, origin: Position, loc: Position,allyScore=2, enemyScore=-10, emptyScore=0):
 		# THIS HERE, EXPLORE USING CONVEYOR + ROAD, dont care about allyScore, enemyScore and emptyScore
 
+		ct.draw_indicator_line(ct.get_position(), loc, 255, 0, 0)
 
 
 		if(not ct.get_move_cooldown() == 0): return
@@ -582,21 +598,26 @@ class BugNav:
 			self.originConnect = origin
 			self.lastConnect = origin
 			self.currentConnections = []
+			print("RESETED CONENCTIONS")
 
 
 		self.lastLocation = self.currentLocation
 		self.currentLocation = ct.get_position()
 
 		if(self.lastTargetLocation == None or self.lastTargetLocation.distance_squared(loc) > 8 or self.bugStackIndex >= self.MAX_STACK_SIZE-10):
+			print("BUGSTACK ", self.bugStackIndex)
 			self.bugStack = [None] * self.MAX_STACK_SIZE
 			self.bugStackIndex = 0
 			self.lastTargetLocation = loc
 			self.lastLocation = ct.get_position()
+			print("RESETED CONENCTIONS2")
 
 		if(self.lastTargetLocation != None and self.lastTargetLocation.distance_squared(loc) <= 8):
 			self.lastTargetLocation = loc
 
 
+		if(self.lastConnect != None):
+			ct.draw_indicator_line(self.lastConnect, Position(0, 0), 255, 255, 100)
 
 		if(ct.get_position().distance_squared(self.lastConnect) > 0):
 			self.MOVE_to_target(ct, self.lastConnect, False, 0, 0, 0)
@@ -604,6 +625,7 @@ class BugNav:
 
 		if(self.lastConnect not in self.currentConnections):
 			self.currentConnections.append(self.lastConnect)
+		print(self.currentConnections)
 
 		while (
 			self.bugStackIndex != 0 and

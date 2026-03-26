@@ -15,9 +15,13 @@ class Builder():
 		self.Tit_Ore_Queue = []
 		self.Anx_Ore_Queue = []
 
+
 		self.state = "EXPLORE"
 		self.target_ore = Position(-1, -1)
 		self.start_building_pos = Position(-1, -1)
+		self.explore_pos = Position(-1, -1	)
+
+		self.destroy_target = Position(-1, -1)
 
 	#region --- QUEUE FUNCTION ---
 	def QUEUE_ore_update(self, ct: Controller):
@@ -26,7 +30,7 @@ class Builder():
 		for tile_pos in nearby_tiles:
 			env = ct.get_tile_env(tile_pos)
 			if not env in Ore_Env: continue
-			if self.CHECK_harvester(ct, tile_pos):
+			if self.CHECK_harvester(ct, tile_pos) or not self.CHECK_can_connect_harvester(ct, tile_pos):
 				self.QUEUE_ore_pop(env, tile_pos)
 				continue
 			else:
@@ -64,6 +68,8 @@ class Builder():
 				self.CORE_POS = ct.get_position(bld)
 				break
 
+
+
 	def GET_nearest_ore(self, ct: Controller):
 		"""Get the nearest resource ore position\n
 		Prior titan queue > anxio queue > vision
@@ -78,40 +84,92 @@ class Builder():
 				dis = my_pos.distance_squared(pos)
 				if dis < min_dis:
 					nearest_pos, min_dis = pos, dis
-		else:
-			for pos in self.Anx_Ore_Queue:
-				dis = my_pos.distance_squared(pos)
-				if dis < min_dis:
-					nearest_pos, min_dis = pos, dis
+		# else:
+		# 	for pos in self.Anx_Ore_Queue:
+		# 		dis = my_pos.distance_squared(pos)
+		# 		if dis < min_dis:
+		# 			nearest_pos, min_dis = pos, dis
 
 		# From vision
-		nearby_tiles = ct.get_nearby_tiles()
-		for tile_pos in nearby_tiles:
-			env = ct.get_tile_env(tile_pos)
-			if not env in Ore_Env: continue
-			if self.CHECK_harvester(ct, tile_pos):
-				self.QUEUE_ore_pop(env, tile_pos)
-				continue
+		# nearby_tiles = ct.get_nearby_tiles()
+		# for tile_pos in nearby_tiles:
+		# 	env = ct.get_tile_env(tile_pos)
+		# 	if not env in Ore_Env: continue
+		# 	if self.CHECK_harvester(ct, tile_pos):
+		# 		self.QUEUE_ore_pop(env, tile_pos)
+		# 		continue
 
-			dis = my_pos.distance_squared(tile_pos)
-			if dis < min_dis:
-				min_dis = dis
-				nearest_pos = tile_pos
+		# 	dis = my_pos.distance_squared(tile_pos)
+		# 	if dis < min_dis:
+		# 		min_dis = dis
+		# 		nearest_pos = tile_pos
 		return nearest_pos
 	#endregion
 
 	#region --- CHECK FUNCTION ---
+
+	def IS_in_map(self, ct, x: int, y: int):
+		"""Check if two int x, y is located in map"""
+		if x < 0 or x >= ct.get_map_width() or y < 0 or y >= ct.get_map_height():
+			return False
+		return True
+
 	def CHECK_harvester(self, ct: Controller, tile_pos: Position):
 		"""Check if a harvester is placed on a position\n
 		If out of vision, return True"""
+		if(not self.explore.IS_in_map(tile_pos.x, tile_pos.y)): return False
 		if not ct.is_in_vision(tile_pos): return False
 
 		pos_id = ct.get_tile_building_id(tile_pos)
 		pos_env = ct.get_entity_type(pos_id)
 		if pos_env != EntityType.HARVESTER:
 			return False
-		return True
-	
+
+		check_dir = Direction.NORTH
+		connected = False
+		for i in range(4):
+			check_pos = tile_pos.add(check_dir)
+			if(not self.IS_in_map(ct, check_pos.x, check_pos.y) or not ct.is_in_vision(check_pos)):
+				connected = True
+				break
+
+			check_building_id = ct.get_tile_building_id(check_pos)
+			check_building_type = ct.get_entity_type(check_building_id)
+			check_building_team = ct.get_team(check_building_id)
+			if(check_building_id is not None and check_building_type in [EntityType.BRIDGE, EntityType.CONVEYOR] and check_building_team == ct.get_team()):
+				connected = True
+			check_dir = check_dir.rotate_right().rotate_right()
+
+		return connected
+
+	def CHECK_can_connect_harvester(self, ct: Controller, tile_pos: Position):
+		if not ct.is_in_vision(tile_pos): return True
+
+
+		check_dir = Direction.NORTH
+		can_connect = False
+		for i in range(4):
+			check_pos = tile_pos.add(check_dir)
+			if(not self.IS_in_map(ct, check_pos.x, check_pos.y) or not ct.is_in_vision(check_pos)):
+				pass
+			else:
+				check_env = ct.get_tile_env(check_pos)
+				if(check_env == Environment.ORE_TITANIUM or check_env == Environment.ORE_AXIONITE):
+					pass
+				else:
+					check_building_id = ct.get_tile_building_id(check_pos)
+					check_building_type = ct.get_entity_type(check_building_id)
+					check_building_team = ct.get_team(check_building_id)
+					if check_building_id is None or  check_building_team == ct.get_team():
+						can_connect = True
+			check_dir = check_dir.rotate_right().rotate_right()
+
+		return can_connect
+
+
+
+
+
 	def CHECK_enemy_turret(self, ct: Controller):
 		"""Return the nearest enemy turret in vision\n
 		Return Pos(-1, -1) if found nothing"""
@@ -145,16 +203,20 @@ class Builder():
 
 	def BUILDER_build(self, ct: Controller):
 		"""Builder robot building function"""
-		if self.CHECK_harvester(ct, self.target_ore):
+		if self.CHECK_harvester(ct, self.target_ore) or not self.CHECK_can_connect_harvester(ct, self.target_ore):
 			self.target_ore = Position(-1, -1)
 			return
 
-		if ct.can_build_harvester(self.target_ore):
-			ct.build_harvester(self.target_ore)
+		if(ct.get_position().distance_squared(self.target_ore) == 1):
+			if ct.get_action_cooldown() != 0 or ct.get_harvester_cost()[0] > ct.get_global_resources()[0]:
+				return
+			if ct.can_build_harvester(self.target_ore):
+				ct.build_harvester(self.target_ore)
 			self.target_ore = Position(-1, -1)
 			self.start_building_pos = ct.get_position()
 			self.state = "BUILD_BACK_TO_CORE"
 			return
+			
 		
 		self.bug_nav.MOVE_to_target(ct, self.target_ore, False)
 
@@ -162,10 +224,12 @@ class Builder():
 		"""Builder robot build bridge back to core"""
 		my_pos = ct.get_position()
 		core_dis = my_pos.distance_squared(self.CORE_POS)
-		if core_dis <= 1:
+		
+		if core_dis <= 1 or self.bug_nav.MOVE_to_target_with_conveyor(ct, self.start_building_pos, self.CORE_POS) == "STUCK" :
 			self.state = "EXPLORE"
 			return
-		self.bug_nav.MOVE_to_target_with_bridge(ct, self.start_building_pos, self.CORE_POS)
+
+
 
 	#endregion
 
@@ -173,11 +237,15 @@ class Builder():
 		"""Main builder robot runner"""
 		self.bug_nav.SENSE_nearby(ct)
 		self.QUEUE_ore_update(ct)
-		print(self.target_ore)
 
-		if self.target_ore != Position(-1, -1):
+
+		if self.state == "BUILD" and self.target_ore != Position(-1, -1):
 			self.state = "BUILD"
-		elif self.state != "BUILD_BACK_TO_CORE":
+		elif(self.state == "BUILD_BACK_TO_CORE"):
+			self.state = "BUILD_BACK_TO_CORE"
+		elif(self.target_ore != Position(-1, -1)):
+			self.state = "BUILD"
+		else:
 			self.state = "EXPLORE"
 		print(self.state)
 
@@ -187,3 +255,4 @@ class Builder():
 			self.BUILDER_build(ct)
 		elif self.state == "BUILD_BACK_TO_CORE":
 			self.BUILDER_back_core(ct)
+

@@ -3,7 +3,6 @@ from core import Core
 from builder import Builder
 import random
 
-
 class Player:
 	def __init__(self):
 		self.core_ctrl = Core()
