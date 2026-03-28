@@ -1,11 +1,15 @@
 from cambc import Controller, EntityType
 from core import Core
 from builder import Builder
+from turret import Turret
+from utils import *
 
 class Player:
 	def __init__(self):
 		self.core_ctrl = Core()
 		self.builder_ctrl = Builder()
+		self.turret_ctrl = Turret()
+		
 		self.setup = False
 
 	def run(self, ct: Controller):
@@ -16,8 +20,15 @@ class Player:
 				self.core_ctrl.CORE_setup(ct)
 				self.setup = True
 			self.core_ctrl.CORE_run(ct)
+
 		elif my_type == EntityType.BUILDER_BOT:
 			if not self.setup:
 				self.builder_ctrl.BUILDER_setup(ct)
 				self.setup = True
 			self.builder_ctrl.BUILDER_run(ct)
+			
+		elif my_type in Turret_Type:
+			if not self.setup:
+				self.turret_ctrl.TURRET_setup(ct)
+				self.setup = True
+			self.turret_ctrl.TURRET_run(ct)
