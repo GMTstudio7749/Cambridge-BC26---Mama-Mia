@@ -196,10 +196,20 @@ class Builder():
 		self.bug_nav.SETUP(ct)
 		self.explore.EXPLORE_setup(ct, ct.get_position(), self.CORE_POS)
 
+		if(ct.get_current_round() == 1):
+			self.state = "EXPLORE"
+		else:
+			self.state = "DEFENSE"
+
+	def BUILDER_defense(self, ct):
+		self.explore.MOVE_explore_in_box(ct, 5, 20, max(self.CORE_POS.x - 10, 0),max(self.CORE_POS.y - 10, 0), min(self.CORE_POS.x + 10, ct.get_map_width() - 1), min(self.CORE_POS.y + 10, ct.get_map_height() - 1) )
+
 	def BUILDER_explore(self, ct: Controller):
 		"""Builder robot explore function"""
-		self.explore.MOVE_explore(ct, 20, 70)
+		self.explore.MOVE_explore_in_box(ct, 5, 20, max(self.CORE_POS.x - 10, 0),max(self.CORE_POS.y - 10, 0), min(self.CORE_POS.x + 10, ct.get_map_width() - 1), min(self.CORE_POS.y + 10, ct.get_map_height() - 1) )
 		self.target_ore = self.GET_nearest_ore(ct)
+
+
 
 	def BUILDER_build(self, ct: Controller):
 		"""Builder robot building function"""
@@ -207,49 +217,132 @@ class Builder():
 			self.target_ore = Position(-1, -1)
 			return
 
-		if(ct.get_position().distance_squared(self.target_ore) == 1):
-			if ct.get_action_cooldown() != 0 or ct.get_harvester_cost()[0] > ct.get_global_resources()[0]:
-				return
-			if ct.can_build_harvester(self.target_ore):
-				ct.build_harvester(self.target_ore)
-			self.target_ore = Position(-1, -1)
-			self.start_building_pos = ct.get_position()
-			self.state = "BUILD_BACK_TO_CORE"
-			return
+		if(ct.get_position() == self.target_ore):
+			builded = False
+			for i in Cardinal_Dirs:
+				pos = self.target_ore.add(i)
+				if(not self.explore.IS_in_map(pos.x, pos.y)):
+					continue
+				bid = ct.get_tile_building_id(pos)
+				btype = ct.get_entity_type(bid)
+				team = ct.get_team(bid)
+				if(bid != None and btype == EntityType.ROAD):
+					if(ct.can_destroy(pos)):
+						ct.destroy(pos)
+				if(bid is None and ct.can_place_marker(pos )):
+					ct.place_marker(pos, 67)
+					builded = True
 			
+			if(not builded):
+				self.start_building_pos = Position(-1, -1)
+				self.state = "BUILD_HARVESTER"
+				return
+
+
+
+		# 	if ct.get_action_cooldown() != 0 or ct.get_harvester_cost()[0] > ct.get_global_resources()[0]:
+		# 		return
+		# 	if ct.can_build_harvester(self.target_ore):
+		# 		ct.build_harvester(self.target_ore)
+		# 	self.target_ore = Position(-1, -1)
+		# 	self.start_building_pos = ct.get_position()
+		# 	self.state = "BUILD_BACK_TO_CORE"
+		# 	return
 		
-		self.bug_nav.MOVE_to_target(ct, self.target_ore, False)
+		if(self.target_ore.distance_squared(ct.get_position()) == 1):
+
+			bid = ct.get_tile_building_id(self.target_ore)
+			btype = ct.get_entity_type(bid)
+			bteam = ct.get_team(bid)
+
+			if(btype == EntityType.MARKER):
+				if(ct.can_destroy(self.target_ore)):
+					ct.destroy(self.target_ore)
+
+			if(ct.can_build_road(self.target_ore)):
+				ct.build_road(self.target_ore)
+			moveDir = ct.get_position().direction_to(self.target_ore)
+			if(ct.can_move(moveDir)):
+				ct.move(moveDir)
+		else:			
+			self.bug_nav.MOVE_to_target(ct, self.target_ore, False)
 
 	def BUILDER_back_core(self, ct: Controller):
 		"""Builder robot build bridge back to core"""
 		my_pos = ct.get_position()
 		core_dis = my_pos.distance_squared(self.CORE_POS)
 		
+
+
 		if core_dis <= 1 or self.bug_nav.MOVE_to_target_with_conveyor(ct, self.start_building_pos, self.CORE_POS) == "STUCK" :
 			self.state = "EXPLORE"
 			return
 
 
+	def BUILDER_build_harvester(self, ct):
+		if(self.start_building_pos == Position(-1, -1)):
+			for i in Cardinal_Dirs:
+				pos = self.target_ore.add(i)
+				bid = ct.get_tile_building_id(pos)
+				btype = ct.get_entity_type(bid)
+				bteam = ct.get_team(bid)
+				env = ct.get_tile_env(pos)
+
+				if(btype == EntityType.MARKER and bteam == ct.get_team() and env == Environment.EMPTY):
+					self.start_building_pos = pos
+					break
+		if(ct.get_position() == self.target_ore):
+			if(ct.can_destroy(self.start_building_pos)):
+				ct.destroy(self.start_building_pos)
+			conveyorDir = self.target_ore.direction_to(self.start_building_pos)
+			if(ct.can_build_road(self.start_building_pos)):
+				ct.build_road(self.start_building_pos)
+			if(ct.can_move(conveyorDir)):
+				ct.move(conveyorDir)
+
+
+		bid = ct.get_tile_building_id(self.target_ore)
+		btype = ct.get_entity_type(bid)
+		bteam = ct.get_team(bid)
+		
+		if(btype == EntityType.ROAD and bteam == ct.get_team()):
+			if(ct.can_destroy(self.target_ore)):
+				ct.destroy(self.target_ore)
+
+		if(ct.can_build_harvester(self.target_ore)):
+			ct.build_harvester(self.target_ore)
+			self.state = "BUILD_BACK_TO_CORE"
+
 
 	#endregion
+
+	def BUILDER_determine_state(self, ct):
+
+		if(self.state == "DEFENSE"):
+			return "DEFENSE"
+		if(self.state == "BUILD_HARVESTER" and self.target_ore != Position(-1, -1)):
+			return "BUILD_HARVESTER"
+		if self.state == "BUILD" and self.target_ore != Position(-1, -1):
+			return "BUILD"
+		if(self.state == "BUILD_BACK_TO_CORE"):
+			return "BUILD_BACK_TO_CORE"
+		if(self.target_ore != Position(-1, -1)):
+			return "BUILD"
+		return "EXPLORE"
 
 	def BUILDER_run(self, ct: Controller):
 		"""Main builder robot runner"""
 		self.bug_nav.SENSE_nearby(ct)
 		self.QUEUE_ore_update(ct)
 
-
-		if self.state == "BUILD" and self.target_ore != Position(-1, -1):
-			self.state = "BUILD"
-		elif(self.state == "BUILD_BACK_TO_CORE"):
-			self.state = "BUILD_BACK_TO_CORE"
-		elif(self.target_ore != Position(-1, -1)):
-			self.state = "BUILD"
-		else:
-			self.state = "EXPLORE"
+		self.state = self.BUILDER_determine_state(ct)
 		print(self.state)
 
-		if self.state == "EXPLORE":
+		if(self.state == "BUILD_HARVESTER"):
+			self.BUILDER_build_harvester(ct)
+		if(self.state == "DEFENSE"):
+			self.BUILDER_defense(ct)
+		elif self.state == "EXPLORE":
 			self.BUILDER_explore(ct)
 		elif self.state == "BUILD":
 			self.BUILDER_build(ct)

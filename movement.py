@@ -4,6 +4,8 @@ from utils import *
 
 class Explore:
 	def __init__(self):
+		self.MAP_X = -1
+		self.MAP_Y = -1
 		self.MAP_WIDTH = -1
 		self.MAP_HEIGHT = -1
 
@@ -32,7 +34,7 @@ class Explore:
 
 	def IS_in_map(self, x: int, y: int):
 		"""Check if two int x, y is located in map"""
-		if x < 0 or x >= self.MAP_WIDTH or y < 0 or y >= self.MAP_HEIGHT:
+		if x < self.MAP_X or x >= self.MAP_WIDTH or y < self.MAP_Y or y >= self.MAP_HEIGHT:
 			return False
 		return True
 
@@ -97,6 +99,119 @@ class Explore:
 		print("Cur_Dis: ", cur_dis)
 		print("\n")
 		ct.draw_indicator_dot(self.Explore_Target, 100, 100, 255)
+
+	def MOVE_explore_in_box(self, ct: Controller, range_squared: int, max_turn: int, x1: int, y1: int, x2: int, y2: int):
+		"""
+		Explore movement restricted to a specific box (x1, y1) to (x2, y2).
+		"""
+		# 1. Initialize target if it's unset or currently outside the box
+		my_pos = ct.get_position()
+		is_target_invalid = (self.Explore_Target.x < x1 or self.Explore_Target.x > x2 or 
+							 self.Explore_Target.y < y1 or self.Explore_Target.y > y2)
+
+		if self.Explore_Target == Position(-1, -1) or is_target_invalid:
+			# Start by picking a direction and finding the box edge
+			if self.Explore_Dir == Direction.CENTRE:
+				self.Explore_Dir = random.choice(Diagonal_Dirs)
+			
+			# Calculate target on the box boundary
+			self.Explore_Target = self.GET_next_box_target(my_pos, self.Explore_Dir, x1, y1, x2, y2)
+			self.Explore_Turn = max_turn
+
+		# 2. Check if we need to "bounce" (reached target or timeout)
+		cur_dis = my_pos.distance_squared(self.Explore_Target)
+		if cur_dis <= range_squared or self.Explore_Turn < 1:
+			self.Explore_Turn = max_turn
+			
+			# Determine bounce direction (Reflection logic)
+			self.Explore_Dir = self.GET_bounce_dir_logic(self.Explore_Dir, self.Explore_Target, x1, y1, x2, y2)
+			
+			# Update target to the new side of the box
+			self.Explore_Target = self.GET_next_box_target(my_pos, self.Explore_Dir, x1, y1, x2, y2)
+
+		# 3. Execution (Movement)
+		if ct.get_move_cooldown() == 0:
+			self.Explore_Turn -= 1
+			self.bugnav.SENSE_nearby(ct)
+			self.bugnav.MOVE_to_target(ct, self.Explore_Target, False)
+
+		# Visual Debugging
+		ct.draw_indicator_dot(self.Explore_Target, 0, 255, 0) # Green dot for box target
+
+	def GET_next_box_target(self, start_pos: Position, dir: Direction, x1: int, y1: int, x2: int, y2: int):
+		# Clamp start position to ensure we are inside the box logic
+		tx, ty = max(x1, min(x2, start_pos.x)), max(y1, min(y2, start_pos.y))
+		dx, dy = dir.delta()
+		
+		# Move step-by-step until we hit a box boundary
+		while (x1 <= tx + dx <= x2) and (y1 <= ty + dy <= y2):
+			tx += dx
+			ty += dy
+		return Position(tx, ty)
+
+	def GET_bounce_dir_logic(self, current_dir: Direction, hit_pos: Position, x1: int, y1: int, x2: int, y2: int):
+		dx, dy = current_dir.delta()
+		
+		# Flip X if hitting left/right walls, flip Y if hitting top/bottom walls
+		new_dx = -dx if (hit_pos.x <= x1 or hit_pos.x >= x2) else dx
+		new_dy = -dy if (hit_pos.y <= y1 or hit_pos.y >= y2) else dy
+		
+		for d in Diagonal_Dirs:
+			if d.delta() == (new_dx, new_dy):
+				return d
+		return random.choice(Diagonal_Dirs)
+
+	def IS_in_box(self, x: int, y: int, x1: int, y1: int, x2: int, y2: int):
+		"""Check if x, y is within the specified box boundaries."""
+		return x1 <= x <= x2 and y1 <= y <= y2
+
+
+
+	def GET_box_target(self, start_pos: Position, dir: Direction, x1: int, y1: int, x2: int, y2: int):
+		"""
+		Calculates the furthest point inside the box along a direction.
+		This effectively 'raycasts' until it hits the box edge.
+		"""
+		# Ensure we start from inside the box (clamping)
+		curr_x = max(x1, min(x2, start_pos.x))
+		curr_y = max(y1, min(y2, start_pos.y))
+		
+		if dir == Direction.CENTRE:
+			dir = random.choice(Diagonal_Dirs)
+		
+		dx, dy = dir.delta()
+		
+		# Loop until the next step would be outside the box
+		while self.IS_in_box(curr_x + dx, curr_y + dy, x1, y1, x2, y2):
+			curr_x += dx
+			curr_y += dy
+			
+		return Position(curr_x, curr_y)
+
+	def GET_box_bounce_dir(self, current_dir: Direction, hit_pos: Position, x1: int, y1: int, x2: int, y2: int):
+		"""
+		Determines the next direction after hitting a box edge.
+		It checks which wall was hit and reflects the direction.
+		"""
+		dx, dy = current_dir.delta()
+		
+		# Check if we hit a vertical wall (left or right)
+		hit_vertical = (hit_pos.x <= x1 or hit_pos.x >= x2)
+		# Check if we hit a horizontal wall (top or bottom)
+		hit_horizontal = (hit_pos.y <= y1 or hit_pos.y >= y2)
+		
+		new_dx = -dx if hit_vertical else dx
+		new_dy = -dy if hit_horizontal else dy
+		
+		# Convert deltas back to a Direction enum
+		for d in Diagonal_Dirs:
+			if d.delta() == (new_dx, new_dy):
+				return d
+				
+		return random.choice(Diagonal_Dirs)
+
+
+
 import random
 from cambc import Controller, Direction, EntityType, Environment, Position
 
@@ -165,6 +280,8 @@ class BugNav:
 		return (0 <= loc.x and loc.x < ct.get_map_width()) and (0 <= loc.y and loc.y < ct.get_map_height())
 
 	def reachableFrom(self, ct, loc, target):
+		if(not self.onTheMap(ct, loc)):
+			return False
 		targetInfo = self.mapInfos[target.x][target.y]
 		if(targetInfo == None or targetInfo == Environment.WALL or targetInfo == EntityType.BARRIER):
 			return False
@@ -656,7 +773,6 @@ class BugNav:
 
 
 			bestDir, bestScore, dirToTarget = self.calcBestDirConveyor(ct, ct.get_position(), loc, allyScore, enemyScore, emptyScore)
-
 			if(bestDir is not None and bestScore > -20):
 				nextPos = ct.get_position().add(bestDir)
 
