@@ -27,6 +27,8 @@ class Builder():
 
 
         self.state = "EXPLORE"
+        self.target_anx_ore = Position(-1,-1)
+        self.target_tit_ore = Position(-1, -1)
         self.conveyor_target = Position(-1,-1)
         self.target_ore = Position(-1, -1)
         self.splitter_pos = Position(-1,-1)
@@ -34,6 +36,7 @@ class Builder():
         self.start_building_pos = Position(-1, -1)
         self.explore_pos = Position(-1, -1)
         self.foundry_and_splitter_pos = Position(-1,-1)
+        self.enemy_core_pos = Position(-1, -1)
 
         self.destroy_target = Position(-1, -1)
 
@@ -289,8 +292,64 @@ class Builder():
                 if ct.can_build_splitter(self.splitter_pos, splitter_dir.opposite()):
                     ct.build_splitter(self.splitter_pos, splitter_dir.opposite())
                     self.check_build_splitter = True
-                    #self.check_anxionite_builder = False
-                    #self.state = "EXPLORE"
+                    self.check_anxionite_builder = False
+                    self.state = "BUILD_CONVEYOR_TO_FOUNDRY"
+    def BUILDER_build_conveyor_to_foundry(self, ct: Controller):
+        if self.start_building_pos == Position(-1, -1):
+            if len(self.Anx_Ore_Queue) > 0:
+                self.target_anx_ore = self.Anx_Ore_Queue[0]
+                self.bug_nav.MOVE_to_target(ct, self.target_anx_ore, False)
+                if ct.get_position().distance_squared(self.target_anx_ore) == 1:
+                    if ct.get_action_cooldown() != 0 or ct.get_harvester_cost()[0] > ct.get_global_resources()[0]:
+                        return
+                    if ct.can_build_harvester(self.target_anx_ore):
+                        ct.build_harvester(self.target_anx_ore)
+                        self.start_building_pos = ct.get_position()
+                    self.target_anx_ore = Position(-1, -1)
+            else:
+                self.explore.MOVE_explore(ct, 20, 70)
+        else:
+            if ct.get_position().distance_squared(self.foundry_pos) <= 1 or self.bug_nav.MOVE_to_target_with_conveyor(ct, self.start_building_pos, self.foundry_pos) == "STUCK":
+                self.state = "BUILD_CONVEYOR_TO_SPLITTER"
+                return
+    def BUILDER_build_conveyor_to_splitter(self, ct: Controller):
+        if self.start_building_pos == Position(-1, -1):
+            if len(self.Tit_Ore_Queue) > 0:
+                self.target_tit_ore = self.Tit_Ore_Queue[0]
+                self.bug_nav.MOVE_to_target(ct, self.target_tit_ore, False)
+                if ct.get_position().distance_squared(self.target_tit_ore) == 1:
+                    if ct.get_action_cooldown() != 0 or ct.get_harvester_cost()[0] > ct.get_global_resources()[0]:
+                        return
+                    if ct.can_build_harvester(self.target_tit_ore):
+                        ct.build_harvester(self.target_tit_ore)
+                        self.start_building_pos = ct.get_position()
+                    self.target_tit_ore = Position(-1, -1)
+            else:
+                self.explore.MOVE_explore(ct, 20, 70)
+        else:
+            if ct.get_position().distance_squared(self.foundry_pos) <= 1 or self.bug_nav.MOVE_to_target_with_conveyor(ct, self.start_building_pos, self.foundry_pos) == "STUCK":
+                self.state = "GET_ENEMY_CORE_POS"
+                return
+    def BUILDER_get_enemy_core_pos(self, ct: Controller):
+        """Find enemy core position"""
+        self.GET_core_pos(ct)
+        possible_enemy_core_pos_1 = Position(ct.get_map_width() - self.CORE_POS.x, self.CORE_POS.y)
+        possible_enemy_core_pos_2 = Position(ct.get_map_width() - self.CORE_POS.x,ct.get_map_height() - self.CORE_POS.y)
+        possible_enemy_core_pos_3 = Position(self.CORE_POS.x,ct.get_map_height() - self.CORE_POS.y)
+        self.bug_nav.MOVE_to_target(ct, possible_enemy_core_pos_1, False)
+        bld1 = ct.get_tile_building_id(ct.get_position())
+        if ct.get_entity_type(bld1) == EntityType.CORE:
+            self.enemy_core_pos = possible_enemy_core_pos_1
+        self.bug_nav.MOVE_to_target(ct, possible_enemy_core_pos_2, False)
+        bld2 = ct.get_tile_building_id(ct.get_position())
+        if ct.get_entity_type(bld2) == EntityType.CORE:
+            self.enemy_core_pos = possible_enemy_core_pos_2
+        self.bug_nav.MOVE_to_target(ct, possible_enemy_core_pos_3, False)
+        bld3 = ct.get_tile_building_id(ct.get_position())
+        if ct.get_entity_type(bld3) == EntityType.CORE:
+            self.enemy_core_pos = possible_enemy_core_pos_3
+
+                
     def BUILDER_back_core(self, ct: Controller):
         """Builder robot build bridge back to core"""
         my_pos = ct.get_position()
@@ -316,6 +375,12 @@ class Builder():
 
         if self.check_anxionite_builder == True:
             self.state = "BUILD_ANX"
+        elif self.state == "BUILD_CONVEYOR_TO_FOUNDRY":
+            self.state = "BUILD_CONVEYOR_TO_FOUNDRY"
+        elif self.state == "BUILD_CONVEYOR_TO_SPLITTER":
+            self.state = "BUILD_CONVEYOR_TO_SPLITTER"
+        elif self.state == "GET_ENEMY_CORE_POS":
+            self.state = "GET_ENEMY_CORE_POS"
         elif self.state == "BUILD_BACK_TO_CORE":
             self.state = "BUILD_BACK_TO_CORE"
         elif self.target_ore != Position(-1, -1):
@@ -326,6 +391,12 @@ class Builder():
 
         if self.state == "BUILD_ANX":
             self.BUILDER_build_foundry_and_splitter(ct)
+        elif self.state == "BUILD_CONVEYOR_TO_FOUNDRY":
+            self.BUILDER_build_conveyor_to_foundry(ct)
+        elif self.state == "BUILD_CONVEYOR_TO_SPLITTER":
+            self.BUILDER_build_conveyor_to_splitter(ct)
+        elif self.state == "GET_ENEMY_CORE_POS":
+            self.BUILDER_get_enemy_core_pos(ct)
         elif self.state == "EXPLORE":
             self.BUILDER_explore(ct)
         elif self.state == "BUILD":
