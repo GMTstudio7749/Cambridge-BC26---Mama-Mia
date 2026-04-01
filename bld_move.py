@@ -3,6 +3,7 @@ from cambc import Controller, Direction, EntityType, Environment, Position
 from utils import *
 
 class Explore:
+	"""Class for explore purpose for builder"""
 	def __init__(self):
 		self.MAP_WIDTH = -1
 		self.MAP_HEIGHT = -1
@@ -752,3 +753,6 @@ class BugNav:
 				dir = dir.rotate_left()
 		if(ct.get_action_cooldown() == 0):
 			return "STUCK"
+		
+bugnav = BugNav()
+explore = Explore()

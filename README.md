@@ -1,1 +1,4 @@
-# Mama_0.0.1
+# Version 2.1
+
+# Update / Feature
+1. Add turret function (Sentinel)
