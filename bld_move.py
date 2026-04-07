@@ -161,7 +161,9 @@ class BugNav:
 
 	def reachableFrom(self, ct, loc, target):
 		targetInfo = self.mapInfos[target.x][target.y]
+
 		if(targetInfo == None or targetInfo == Environment.WALL or targetInfo == EntityType.BARRIER or targetInfo == EntityType.HARVESTER):
+			
 			return False
 		checkLoc = loc
 		while(not checkLoc == target):
@@ -212,8 +214,8 @@ class BugNav:
 		if(info == Environment.EMPTY):
 			score += emptyScore
 		if(info == Environment.ORE_AXIONITE or info == Environment.ORE_TITANIUM):
-			# score -= 20
-			score += emptyScore
+			score -= 50
+			# score += emptyScore
 			# if(not allyBehind): score -= 2
 		# allyBehind = False
 		return score
@@ -236,12 +238,13 @@ class BugNav:
 			score += 1
 		info = self.mapInfos[loc.x][loc.y]
 		bid = ct.get_tile_building_id(loc)
+		bteam = ct.get_team(bid)
 		if(self.tooCloseToDanger(ct, loc)):
 			score -= 20
 
 
-		if(info == EntityType.CORE or info == EntityType.CONVEYOR  or info == EntityType.ROAD):
-			if(ct.get_team(ct.get_tile_building_id(loc))  == ct.get_team()):
+		if(info == EntityType.CONVEYOR or info == EntityType.BRIDGE):
+			if(ct.get_team(bid)  == ct.get_team()):
 				score += allyScore
 			else:
 				score += enemyScore
@@ -251,15 +254,20 @@ class BugNav:
 				if(currentLoc == conveyorTarget):
 					return -50
 			return score
+		if(bteam != ct.get_team()):
+			return enemyScore
+		if(info == EntityType.ROAD or info == EntityType.CORE):
+			return emptyScore
 
 
-
+		if(info == EntityType.BARRIER or info == Environment.WALL):
+			return -99999
 
 		if(info == Environment.EMPTY):
 			score += emptyScore
 		if(info == Environment.ORE_AXIONITE or info == Environment.ORE_TITANIUM):
-			# score -= 20
-			score += emptyScore
+			score -= 50
+			# score += emptyScore
 		return score
 
 
@@ -467,6 +475,25 @@ class BugNav:
 		pos13 = cur_pos.add(dir2).add(dir3)
 		pos14 = cur_pos.add(dir3).add(dir1)
 		pos15 = cur_pos.add(dir3).add(dir2)
+
+		ct.draw_indicator_line(cur_pos, pos1, 255, 255, 255)
+		ct.draw_indicator_line(cur_pos, pos2, 255, 255, 255)
+		ct.draw_indicator_line(cur_pos, pos3, 255, 255, 255)
+		ct.draw_indicator_line(cur_pos, pos4, 255, 255, 255)
+		ct.draw_indicator_line(cur_pos, pos5, 255, 255, 255)
+		ct.draw_indicator_line(cur_pos, pos6, 255, 255, 255)
+		ct.draw_indicator_line(cur_pos, pos7, 255, 255, 255)
+		ct.draw_indicator_line(cur_pos, pos8, 255, 255, 255)
+		ct.draw_indicator_line(cur_pos, pos9, 255, 255, 255)
+		ct.draw_indicator_line(cur_pos, pos10, 255, 255, 255)
+		ct.draw_indicator_line(cur_pos, pos11, 255, 255, 255)
+		ct.draw_indicator_line(cur_pos, pos12, 255, 255, 255)
+		ct.draw_indicator_line(cur_pos, pos13, 255, 255, 255)
+		ct.draw_indicator_line(cur_pos, pos14, 255, 255, 255)
+		ct.draw_indicator_line(cur_pos, pos15, 255, 255, 255)
+
+
+
 
 		score1 = self.tileScoreConveyor(ct, cur_pos, pos1, loc,  allyScore, enemyScore, emptyScore)
 		score2 = self.tileScoreConveyor(ct, cur_pos, pos2, loc,  allyScore, enemyScore, emptyScore)
@@ -823,7 +850,12 @@ class BugNav:
 
 
 		if(self.bugStackIndex == 0):
-			bestDir, bestPos, bestScore, dirToTarget = self.calcBestDirConveyor(ct, self.lastConnect, loc, 0, -25, 0)
+			if(self.lastConnect.distance_squared(loc) > 30):
+				allyScore = -1
+			else:
+				allyScore = -3
+			bestDir, bestPos, bestScore, dirToTarget = self.calcBestDirConveyor(ct, self.lastConnect, loc, allyScore, -25, 1)
+			
 			# ct.draw_indicator_line(Position(0, 0), bestPos, 255, 255, 255)
 			if(bestPos is not None and bestScore > -20):
 				if(self.lastConnect.distance_squared(bestPos) == 1):
@@ -837,7 +869,9 @@ class BugNav:
 				if(bestPos.distance_squared(self.lastConnect) < ct.get_position().distance_squared(self.lastConnect)):
 					if(ct.can_move(bestDir)):
 						ct.move(bestDir)
-				return
+						return
+				if(ct.get_action_cooldown() > 0 or ct.get_global_resources()[0] < ct.get_bridge_cost()[0]):
+					return
 
 			locCheck = ct.get_position().add(dirToTarget)
 			checkFrontRobot = self.onTheMap(ct, locCheck) and ct.get_tile_builder_bot_id(locCheck) != None
@@ -871,6 +905,8 @@ class BugNav:
 						if(ct.can_move(dir)):
 							ct.move(dir)
 							return
+					if(ct.get_action_cooldown() > 0 or ct.get_global_resources()[0] < ct.get_bridge_cost()[0]):
+						return
 				dir = dir.rotate_right()
 		else:
 			print("RIGHTING")
@@ -892,6 +928,8 @@ class BugNav:
 						if(ct.can_move(dir)):
 							ct.move(dir)
 							return
+					if(ct.get_action_cooldown() > 0 or ct.get_global_resources()[0] < ct.get_bridge_cost()[0]):
+						return
 				dir = dir.rotate_left()
 		if(ct.get_action_cooldown() == 0):
 			return "STUCK"
