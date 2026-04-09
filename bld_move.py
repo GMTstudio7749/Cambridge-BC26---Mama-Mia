@@ -160,6 +160,8 @@ class BugNav:
 		return (0 <= loc.x and loc.x < ct.get_map_width()) and (0 <= loc.y and loc.y < ct.get_map_height())
 
 	def reachableFrom(self, ct, loc, target):
+		if(not self.onTheMap(ct, target)):
+			return False
 		targetInfo = self.mapInfos[target.x][target.y]
 
 		if(targetInfo == None or targetInfo == Environment.WALL or targetInfo == EntityType.BARRIER or targetInfo == EntityType.HARVESTER):
@@ -197,6 +199,8 @@ class BugNav:
 				score += allyScore
 			else:
 				score += enemyScore
+				if(info == EntityType.CORE):
+					return -99999
 
 			return score
 
@@ -355,6 +359,7 @@ class BugNav:
 			self.bugStackIndex -= 1
 
 		if(self.reachableFrom(ct, ct.get_position(), loc)):
+			print("REACHED SMT")
 			self.bugStack = [None] * self.MAX_STACK_SIZE
 			self.bugStackIndex = 0
 

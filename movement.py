@@ -400,6 +400,7 @@ class BugNav:
 		dirToTarget = cur_pos.direction_to(loc)
 		bestDir = None
 		bestScore = -9999
+		bestPos = None
 
 		if(cur_pos.distance_squared(loc) < 30):
 			allyScore -= 5
@@ -432,14 +433,17 @@ class BugNav:
 
 		if(self.canMove(ct, cur_pos.add(dirToTarget)) and score1 > bestScore and not cur_pos.add(dirToTarget) == self.lastLocation):
 			bestDir = dirToTarget
+			bestPos = cur_pos.add(dir1)
 			bestScore = score1
-		if(self.canMove(ct, cur_pos.add(dirToTarget.rotate_left())) and score2 > bestScore and not cur_pos.add(dirToTarget.rotate_left()) == self.lastLocation):
-			bestDir = dirToTarget.rotate_left()
+		if(self.canMove(ct, cur_pos.add(dir2)) and score2 > bestScore and not cur_pos.add(dir2) == self.lastLocation):
+			bestDir = dir2
+			bestPos = cur_pos.add(dir2)
 			bestScore = score2
-		if(self.canMove(ct, cur_pos.add(dirToTarget.rotate_right())) and score3 > bestScore and not cur_pos.add(dirToTarget.rotate_right()) == self.lastLocation):
-			bestDir = dirToTarget.rotate_right()
+		if(self.canMove(ct, cur_pos.add(dir3)) and score3 > bestScore and not cur_pos.add(dir3) == self.lastLocation):
+			bestDir = dir3
+			bestPos = cur_pos.add(dir3)
 			bestScore = score3
-		return bestDir, bestScore, dirToTarget
+		return bestDir, bestPos, bestScore, dirToTarget
 
 	def tryBuildConveyor(self, ct, pos, dir, save=True):
 		bid = ct.get_tile_building_id(pos)
@@ -575,180 +579,152 @@ class BugNav:
 		self.tryBuildRoad(ct, nextPos)
 
 
-	def MOVE_to_target_with_conveyor(self, ct, origin: Position, loc: Position,allyScore=2, enemyScore=-10, emptyScore=0):
+	def MOVE_to_target_with_conveyor(self, ct, origin: Position, loc: Position):
 		# THIS HERE, EXPLORE USING CONVEYOR + ROAD, dont care about allyScore, enemyScore and emptyScore
+		pass
+		# ct.draw_indicator_line(ct.get_position(), loc, 255, 255, 0)
+		
+		# print("ISTHISREALLYWORK? I REALLY DONT KNOW")
 
-		ct.draw_indicator_line(ct.get_position(), loc, 255, 0, 0)
-
-
-		if(not ct.get_move_cooldown() == 0): return
-		if(ct.get_global_resources()[0] < ct.get_conveyor_cost()[0]):
-			return
-
-
-		if(self.originConnect == None or self.originConnect != origin):
-			self.originConnect = origin
-			self.lastConnect = origin
-			self.currentConnections = []
-			print("RESETED CONENCTIONS")
+		# if(not ct.get_move_cooldown() == 0): return
+		# if(ct.get_global_resources()[0] < ct.get_conveyor_cost()[0]):
+		# 	return
 
 
-		self.lastLocation = self.currentLocation
-		self.currentLocation = ct.get_position()
-
-		if(self.lastTargetLocation == None or self.lastTargetLocation.distance_squared(loc) > 8 or self.bugStackIndex >= self.MAX_STACK_SIZE-10):
-			print("BUGSTACK ", self.bugStackIndex)
-			self.bugStack = [None] * self.MAX_STACK_SIZE
-			self.bugStackIndex = 0
-			self.lastTargetLocation = loc
-			self.lastLocation = ct.get_position()
-			print("RESETED CONENCTIONS2")
-
-		if(self.lastTargetLocation != None and self.lastTargetLocation.distance_squared(loc) <= 8):
-			self.lastTargetLocation = loc
+		# if(self.originConnect == None or self.originConnect != origin):
+		# 	self.originConnect = origin
+		# 	self.lastConnect = origin
+		# 	self.currentConnections = []
+		# 	print("RESETED CONENCTIONS")
 
 
-		if(self.lastConnect != None):
-			ct.draw_indicator_line(self.lastConnect, Position(0, 0), 255, 255, 100)
+		# self.lastLocation = self.currentLocation
+		# self.currentLocation = ct.get_position()
 
-		if(ct.get_position().distance_squared(self.lastConnect) > 0):
-			self.MOVE_to_target(ct, self.lastConnect, False, 0, 0, 0)
-			return
+		# if(self.lastTargetLocation == None or self.lastTargetLocation.distance_squared(loc) > 8 or self.bugStackIndex >= self.MAX_STACK_SIZE-10):
+		# 	print("BUGSTACK ", self.bugStackIndex)
+		# 	self.bugStack = [None] * self.MAX_STACK_SIZE
+		# 	self.bugStackIndex = 0
+		# 	self.lastTargetLocation = loc
+		# 	self.lastLocation = ct.get_position()
+		# 	print("RESETED CONENCTIONS2")
 
-		if(self.lastConnect not in self.currentConnections):
-			self.currentConnections.append(self.lastConnect)
-		print(self.currentConnections)
-
-		while (
-			self.bugStackIndex != 0 and
-			(
-				(
-					self.canMove(ct, ct.get_position().add(self.bugStack[self.bugStackIndex - 1])) and
-					not self.tooCloseToDanger(ct, ct.get_position().add(self.bugStack[self.bugStackIndex - 1]))
-				)
-				or
-				(
-					self.bugStackIndex > 1 and
-					self.canMove(ct, ct.get_position().add( self.bugStack[self.bugStackIndex - 2])) and
-					not self.tooCloseToDanger(ct, ct.get_position().add(self.bugStack[self.bugStackIndex - 2])) and
-					not (
-						self.lastLocation is not None and
-						ct.get_position().add(self.bugStack[self.bugStackIndex - 2]) == self.lastLocation
-					)
-				)
-			)
-		):
-			self.bugStackIndex -= 1
-
-		if(self.reachableFrom(ct, ct.get_position(), loc)):
-			self.bugStack = [None] * self.MAX_STACK_SIZE
-			self.bugStackIndex = 0
-
-		if(self.bugStackIndex == 0):
+		# if(self.lastTargetLocation != None and self.lastTargetLocation.distance_squared(loc) <= 8):
+		# 	self.lastTargetLocation = loc
 
 
-			bestDir, bestScore, dirToTarget = self.calcBestDirConveyor(ct, ct.get_position(), loc, allyScore, enemyScore, emptyScore)
+		# if(self.lastConnect != None):
+		# 	ct.draw_indicator_line(self.lastConnect, Position(0, 0), 255, 255, 100)
 
-			if(bestDir is not None and bestScore > -20):
-				nextPos = ct.get_position().add(bestDir)
+		# if(ct.get_position().distance_squared(self.lastConnect) > 0):
+		# 	self.MOVE_to_target(ct, self.lastConnect, False)
+		# 	return
 
-				# if(ct.get_position() == origin):
-					# self.lastConnect = ct.get_position().add(bestDir)
+		# if(self.lastConnect not in self.currentConnections):
+		# 	self.currentConnections.append(self.lastConnect)
+		# print(self.currentConnections)
 
-				bid = ct.get_tile_building_id(self.lastConnect)
-				btype = ct.get_entity_type(bid)
-				bteam = ct.get_team(bid)
+		# while (
+		# 	self.bugStackIndex != 0 and
+		# 	(
+		# 		(
+		# 			self.canMove(ct, ct.get_position().add(self.bugStack[self.bugStackIndex - 1])) and
+		# 			not self.tooCloseToDanger(ct, ct.get_position().add(self.bugStack[self.bugStackIndex - 1]))
+		# 		)
+		# 		or
+		# 		(
+		# 			self.bugStackIndex > 1 and
+		# 			self.canMove(ct, ct.get_position().add( self.bugStack[self.bugStackIndex - 2])) and
+		# 			not self.tooCloseToDanger(ct, ct.get_position().add(self.bugStack[self.bugStackIndex - 2])) and
+		# 			not (
+		# 				self.lastLocation is not None and
+		# 				ct.get_position().add(self.bugStack[self.bugStackIndex - 2]) == self.lastLocation
+		# 			)
+		# 		)
+		# 	)
+		# ):
+		# 	self.bugStackIndex -= 1
 
-				if(bid != None):
-					if(bteam == ct.get_team()):
-						if(btype == EntityType.CONVEYOR):
-							self.lastConnect = self.lastConnect.add(ct.get_direction(bid))
-						if(btype == EntityType.BRIDGE):
-							self.lastConnect = ct.get_bridge_target(bid)
+		# if(self.reachableFrom(ct, ct.get_position(), loc)):
+		# 	self.bugStack = [None] * self.MAX_STACK_SIZE
+		# 	self.bugStackIndex = 0
 
-				bestDir2, bestScore2, dirToTarget2 = self.calcBestDirConveyor(ct, ct.get_position().add(bestDir), loc, allyScore, enemyScore, emptyScore)
-				builded = False
-				
-				
-				if(bestDir == self.toCardinal(bestDir)):
-					if(ct.get_position() == self.lastConnect):
-						builded = builded or self.tryBuildConveyor(ct, self.lastConnect, bestDir)
-				else:
-					if(ct.get_global_resources()[0] < ct.get_bridge_cost()[0]):
-						return
-					if(bestDir2 is not None and bestScore2 > -20):
-						bestDir3, bestScore3, dirToTarget3 = self.calcBestDirConveyor(ct, nextPos.add(bestDir2), loc, allyScore, enemyScore, emptyScore)
-						if(bestDir3 is not None and bestScore3 > -20):
+		# if(self.bugStackIndex == 0):
 
-							nextPos2 = nextPos.add(bestDir2)
-							builded = builded or self.tryBuildBridge(ct, self.lastConnect, nextPos2.add(bestDir3))
-						builded = builded or self.tryBuildBridge(ct, self.lastConnect, nextPos.add(bestDir2))
-					builded = builded or self.tryBuildBridge(ct, self.lastConnect, nextPos)
 
-				if(ct.can_build_road(ct.get_position().add(bestDir))):
-					ct.build_road(ct.get_position().add(bestDir))
+		# 	bestDir, bestPos, bestScore, dirToTarget = self.calcBestDirConveyor(ct, ct.get_position(), loc, 0, -25, 0)
 
-				if(nextPos.distance_squared(self.lastConnect) < ct.get_position().distance_squared(self.lastConnect)):
-					if(ct.can_move(bestDir)):
-						ct.move(bestDir)
-					return
-				if(ct.get_action_cooldown() > 0):
-					return
+		# 	if(bestPos is not None and bestScore > -20):
+		# 		if(ct.get_position().distance_squared(bestPos) == 1):
+		# 			conveyorDir = ct.get_position().direction_to(conveyorDir)
+		# 			self.tryBuildConveyor(ct, self.lastConnect, conveyorDir)
+		# 		else:
+		# 			self.tryBuildBridge(ct, self.lastConnect, bestPos)
 
-			locCheck = ct.get_position().add(dirToTarget)
-			checkFrontRobot = self.onTheMap(ct, locCheck) and ct.get_tile_builder_bot_id(locCheck) != None
-			locCheck = ct.get_position().add(dirToTarget.rotate_left())
-			checkLeftRobot = self.onTheMap(ct, locCheck) and  ct.get_tile_builder_bot_id(locCheck) != None
-			locCheck = ct.get_position().add(dirToTarget.rotate_right())
-			checkRightRobot = self.onTheMap(ct, locCheck) and  ct.get_tile_builder_bot_id(locCheck) != None
-			if(checkFrontRobot and checkLeftRobot and checkRightRobot):
-				self.fuzzyMove(ct, dirToTarget.opposite())
-				return
-			self.bugStack[self.bugStackIndex] = dirToTarget.rotate_left() if self.RIGHT else dirToTarget.rotate_right()
-			self.bugStackIndex += 1
+		# 		if(ct.can_build_road(ct.get_position().add(bestDir))):
+		# 			ct.build_road(ct.get_position().add(bestDir))
 
-		if(self.RIGHT):
-			print("LEFTING")
-			dir = self.bugStack[self.bugStackIndex-1].rotate_right()
-			for i in range(8):
-				if(not self.canMoveDirWithConveyor(ct, ct.get_position().add(dir), dir) or self.tooCloseToDanger(ct, ct.get_position().add(dir)) ):
-					if(not self.onTheMap(ct, ct.get_position().add(dir))):
-						self.bugStack = [None] * self.MAX_STACK_SIZE
-						self.bugStackIndex = 0
-						self.RIGHT = not self.RIGHT
-						break
-					self.bugStack[self.bugStackIndex] = dir
-					self.bugStackIndex += 1
+		# 		if(bestPos.distance_squared(self.lastConnect) < ct.get_position().distance_squared(self.lastConnect)):
+		# 			if(ct.can_move(bestDir)):
+		# 				ct.move(bestDir)
+		# 			return
+		# 		if(ct.get_action_cooldown() > 0):
+		# 			return
 
-				else:
-					if(not self.canMove(ct, ct.get_position().add(dir))):
-						continue
-					self.tryDirWithConveyor(ct, dir)
-					if(ct.get_position().add(dir).distance_squared(self.lastConnect) < ct.get_position().distance_squared(self.lastConnect)):
-						if(ct.can_move(dir)):
-							ct.move(dir)
-						return
-				dir = dir.rotate_right()
-		else:
-			print("RIGHTING")
-			dir = self.bugStack[self.bugStackIndex-1].rotate_left()
-			for i in range(8):
-				if(not self.canMoveDirWithConveyor(ct, ct.get_position().add(dir), dir) or self.tooCloseToDanger(ct, ct.get_position().add(dir)) ):
-					if(not self.onTheMap(ct, ct.get_position().add(dir))):
-						self.bugStack = [None] * self.MAX_STACK_SIZE
-						self.bugStackIndex = 0
-						self.RIGHT = not self.RIGHT
-						break
-					self.bugStack[self.bugStackIndex] = dir
-					self.bugStackIndex += 1
+		# 	locCheck = ct.get_position().add(dirToTarget)
+		# 	checkFrontRobot = self.onTheMap(ct, locCheck) and ct.get_tile_builder_bot_id(locCheck) != None
+		# 	locCheck = ct.get_position().add(dirToTarget.rotate_left())
+		# 	checkLeftRobot = self.onTheMap(ct, locCheck) and  ct.get_tile_builder_bot_id(locCheck) != None
+		# 	locCheck = ct.get_position().add(dirToTarget.rotate_right())
+		# 	checkRightRobot = self.onTheMap(ct, locCheck) and  ct.get_tile_builder_bot_id(locCheck) != None
+		# 	if(checkFrontRobot and checkLeftRobot and checkRightRobot):
+		# 		self.fuzzyMove(ct, dirToTarget.opposite())
+		# 		return
+		# 	self.bugStack[self.bugStackIndex] = dirToTarget.rotate_left() if self.RIGHT else dirToTarget.rotate_right()
+		# 	self.bugStackIndex += 1
 
-				else:
-					if(not self.canMove(ct, ct.get_position().add(dir))):
-						continue
-					self.tryDirWithConveyor(ct, dir)
-					if(ct.get_position().add(dir).distance_squared(self.lastConnect) < ct.get_position().distance_squared(self.lastConnect)):
-						if(ct.can_move(dir)):
-							ct.move(dir)
-				dir = dir.rotate_left()
-		if(ct.get_action_cooldown() == 0):
-			return "STUCK"
+		# if(self.RIGHT):
+		# 	print("LEFTING")
+		# 	dir = self.bugStack[self.bugStackIndex-1].rotate_right()
+		# 	for i in range(8):
+		# 		if(not self.canMoveDirWithConveyor(ct, ct.get_position().add(dir), dir) or self.tooCloseToDanger(ct, ct.get_position().add(dir)) ):
+		# 			if(not self.onTheMap(ct, ct.get_position().add(dir))):
+		# 				self.bugStack = [None] * self.MAX_STACK_SIZE
+		# 				self.bugStackIndex = 0
+		# 				self.RIGHT = not self.RIGHT
+		# 				break
+		# 			self.bugStack[self.bugStackIndex] = dir
+		# 			self.bugStackIndex += 1
+
+		# 		else:
+		# 			if(not self.canMove(ct, ct.get_position().add(dir))):
+		# 				continue
+		# 			self.tryDirWithConveyor(ct, dir)
+		# 			if(ct.get_position().add(dir).distance_squared(self.lastConnect) < ct.get_position().distance_squared(self.lastConnect)):
+		# 				if(ct.can_move(dir)):
+		# 					ct.move(dir)
+		# 				return
+		# 		dir = dir.rotate_right()
+		# else:
+		# 	print("RIGHTING")
+		# 	dir = self.bugStack[self.bugStackIndex-1].rotate_left()
+		# 	for i in range(8):
+		# 		if(not self.canMoveDirWithConveyor(ct, ct.get_position().add(dir), dir) or self.tooCloseToDanger(ct, ct.get_position().add(dir)) ):
+		# 			if(not self.onTheMap(ct, ct.get_position().add(dir))):
+		# 				self.bugStack = [None] * self.MAX_STACK_SIZE
+		# 				self.bugStackIndex = 0
+		# 				self.RIGHT = not self.RIGHT
+		# 				break
+		# 			self.bugStack[self.bugStackIndex] = dir
+		# 			self.bugStackIndex += 1
+
+		# 		else:
+		# 			if(not self.canMove(ct, ct.get_position().add(dir))):
+		# 				continue
+		# 			self.tryDirWithConveyor(ct, dir)
+		# 			if(ct.get_position().add(dir).distance_squared(self.lastConnect) < ct.get_position().distance_squared(self.lastConnect)):
+		# 				if(ct.can_move(dir)):
+		# 					ct.move(dir)
+		# 		dir = dir.rotate_left()
+		# if(ct.get_action_cooldown() == 0):
+		# 	return "STUCK"
