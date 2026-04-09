@@ -17,6 +17,7 @@ class BldRush():
         self.target_attackable = Position(-1, -1)
 
         self.attack_turn_count = 0
+        self.MODES = "NORMAL"
 
     def GET_best_seen_attackable(self, ct):
         best_attackable = None
@@ -54,23 +55,23 @@ class BldRush():
             self.attackables[attackable_pos.x][attackable_pos.y].ignore = MAX_ATTACKABLE_IGNORE_TURN 
 
     def GOT_nearby_working_allies(self, ct, attackable_pos):
-        out = 0
-        # for dir in All_Dirs:
-        #     pos = attackable_pos.add(dir)
-        #     if(not ct.is_in_vision(pos) or not ctx.explore.IS_in_map(pos.x, pos.y)):
-        #         continue
-        #     bid = ct.get_tile_builder_bot_id(pos)
-        #     bteam = ct.get_team(bid)
-        #     if(bteam == ct.get_team()):
-        #         out += 1
-        # return out
-    
-        if(not ct.is_in_vision(attackable_pos) or not ctx.explore.IS_in_map(attackable_pos.x, attackable_pos.y)):
+        if(self.state == "HARASS"):
+            out = 0
+            for dir in All_Dirs:
+                pos = attackable_pos.add(dir)
+                if(not ct.is_in_vision(pos) or not ctx.explore.IS_in_map(pos.x, pos.y)):
+                    continue
+                bid = ct.get_tile_builder_bot_id(pos)
+                if(bid != None):
+                    out += 1
+            return out
+        else:
+            if(not ct.is_in_vision(attackable_pos) or not ctx.explore.IS_in_map(attackable_pos.x, attackable_pos.y)):
+                return 0
+            bid = ct.get_tile_builder_bot_id(attackable_pos)
+            if(bid != ct.get_id()):
+                return 1
             return 0
-        bid = ct.get_tile_builder_bot_id(attackable_pos)
-        if(bid != ct.get_id()):
-            return 1
-        return 0
 
 
     def GET_attackable_info(self, ct, attackable_pos):
@@ -110,7 +111,8 @@ class BldRush():
 
         if(ct.is_in_vision(explorePos)):
             bid = ct.get_tile_building_id(explorePos)
-            if(bid != None and ct.get_entity_type(bid) == EntityType.CORE):
+            bteam = ct.get_team(bid)
+            if(bid != None and ct.get_entity_type(bid) == EntityType.CORE and bteam != ct.get_team()):
                 self.sym = currentCheck
             self.explored_sym[currentCheck] = True
 
@@ -156,7 +158,7 @@ class BldRush():
         if self.target_attackable == None:
             ctx.bugnav.MOVE_to_target(ct, self.enemy_core_pos, False)
         if(self.target_attackable != None):
-            self.attack_turn_count = 50
+            self.attack_turn_count = 30
             if(self.target_attackable.type == "NORMAL"):
                 self.state = "ATTACK_TARGET_NORMAL"
 
@@ -164,9 +166,9 @@ class BldRush():
         self.target_attackable.ignore = MAX_ATTACKABLE_IGNORE_TURN
         if(ct.is_in_vision(self.target_attackable.pos)):
             # if(self.GOT_nearby_working_allies(ct, self.target_attackable.pos) > 0):
-            #     self.target_attackable.ignore = MAX_ATTACKABLE_IGNORE_TURN
-            #     self.state = "ATTACK"
-            #     return
+                # self.target_attackable.ignore = MAX_ATTACKABLE_IGNORE_TURN
+                # self.state = "ATTACK"
+                # return
             bid = ct.get_tile_building_id(self.target_attackable.pos)
             btype = ct.get_entity_type(bid)
             bteam = ct.get_team(bid)
@@ -194,8 +196,8 @@ class BldRush():
                 nextPos = self.target_attackable.pos.add(ct.get_direction(bid))
             elif(btype == EntityType.BRIDGE):
                 nextPos = ct.get_bridge_target(bid)
-
-            if(nextPos != Position(-1, -1) and self.attackables[nextPos.x][nextPos.y].score > 0):
+            print("IGNORE: ", self.attackables[nextPos.x][nextPos.y].ignore)
+            if(nextPos != Position(-1, -1) and self.attackables[nextPos.x][nextPos.y].score > 0 and self.attackables[nextPos.x][nextPos.y].ignore < 10):
                 self.target_attackable = self.attackables[nextPos.x][nextPos.y]
             
             if(ct.can_fire(self.target_attackable.pos)):
@@ -225,6 +227,9 @@ class BldRush():
         if(self.attack_turn_count > 0):
             self.attack_turn_count -= 1
             if(self.attack_turn_count == 0):
+                if(self.target_attackable != None):
+                    self.target_attackable.ignore = 100
+                    self.MODES = "HARASS"
                 self.state = "ATTACK"
 
         if(self.state == "FIND_CORE"):
