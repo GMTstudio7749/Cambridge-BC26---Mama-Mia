@@ -160,8 +160,12 @@ class BugNav:
 		return (0 <= loc.x and loc.x < ct.get_map_width()) and (0 <= loc.y and loc.y < ct.get_map_height())
 
 	def reachableFrom(self, ct, loc, target):
+		if(not self.onTheMap(ct, target)):
+			return False
 		targetInfo = self.mapInfos[target.x][target.y]
-		if(targetInfo == None or targetInfo == Environment.WALL or targetInfo == EntityType.BARRIER):
+
+		if(targetInfo == None or targetInfo == Environment.WALL or targetInfo == EntityType.BARRIER or targetInfo == EntityType.HARVESTER):
+			
 			return False
 		checkLoc = loc
 		while(not checkLoc == target):
@@ -195,6 +199,8 @@ class BugNav:
 				score += allyScore
 			else:
 				score += enemyScore
+				if(info == EntityType.CORE):
+					return -99999
 
 			return score
 
@@ -212,10 +218,62 @@ class BugNav:
 		if(info == Environment.EMPTY):
 			score += emptyScore
 		if(info == Environment.ORE_AXIONITE or info == Environment.ORE_TITANIUM):
-			score -= 20
+			score -= 50
+			# score += emptyScore
 			# if(not allyBehind): score -= 2
 		# allyBehind = False
 		return score
+
+	def tileScoreConveyor(self, ct, currentLoc, loc, target, allyScore, enemyScore, emptyScore):
+		return self.tileScoreConveyorBool(ct, currentLoc,loc, target, allyScore, enemyScore, emptyScore, False)
+
+	def tileScoreConveyorBool(self, ct, currentLoc, loc, target, allyScore, enemyScore, emptyScore, checkAllyBehind):
+		if(not self.onTheMap(ct, loc)):
+			return -99999
+		if(not ct.is_in_vision(loc)):
+			print(ct.get_current_round(), ct.get_id())
+			return -99999
+		if(currentLoc.distance_squared(loc) > 9):
+			return -99999
+		
+		
+		score = 0
+		if(loc.distance_squared(target) <= 2):
+			score += 1
+		info = self.mapInfos[loc.x][loc.y]
+		bid = ct.get_tile_building_id(loc)
+		bteam = ct.get_team(bid)
+		if(self.tooCloseToDanger(ct, loc)):
+			score -= 20
+
+
+		if(info == EntityType.CONVEYOR or info == EntityType.BRIDGE):
+			if(ct.get_team(bid)  == ct.get_team()):
+				score += allyScore
+			else:
+				score += enemyScore
+			if(info == EntityType.CONVEYOR):
+				conveyorDir = ct.get_direction(bid)
+				conveyorTarget = loc.add(conveyorDir)
+				if(currentLoc == conveyorTarget):
+					return -50
+			return score
+		if(bteam != ct.get_team()):
+			return enemyScore
+		if(info == EntityType.ROAD or info == EntityType.CORE):
+			return emptyScore
+
+
+		if(info == EntityType.BARRIER or info == Environment.WALL):
+			return -99999
+
+		if(info == Environment.EMPTY):
+			score += emptyScore
+		if(info == Environment.ORE_AXIONITE or info == Environment.ORE_TITANIUM):
+			score -= 50
+			# score += emptyScore
+		return score
+
 
 	def toCardinal(self, dir):
 		dx, dy = dir.delta()
@@ -301,6 +359,7 @@ class BugNav:
 			self.bugStackIndex -= 1
 
 		if(self.reachableFrom(ct, ct.get_position(), loc)):
+			print("REACHED SMT")
 			self.bugStack = [None] * self.MAX_STACK_SIZE
 			self.bugStackIndex = 0
 
@@ -401,46 +460,172 @@ class BugNav:
 		dirToTarget = cur_pos.direction_to(loc)
 		bestDir = None
 		bestScore = -9999
-
-		if(cur_pos.distance_squared(loc) < 30):
-			allyScore -= 5
-			emptyScore += 5
+		bestPos = None
 
 		dir1 = dirToTarget
 		dir2 = dirToTarget.rotate_left()
 		dir3 = dirToTarget.rotate_right()
-		score1 = self.tileScore(ct, cur_pos.add(dir1),  allyScore, enemyScore, emptyScore)
-		score2 = self.tileScore(ct, cur_pos.add(dir2), allyScore, enemyScore, emptyScore)
-		score3 = self.tileScore(ct, cur_pos.add(dir3),  allyScore, enemyScore, emptyScore)
+		pos1 = cur_pos.add(dir1)
+		pos2 = cur_pos.add(dir2)
+		pos3 = cur_pos.add(dir3)
+		pos4 = cur_pos.add(dir1).add(dir1)
+		pos5 = cur_pos.add(dir2).add(dir2)
+		pos6 = cur_pos.add(dir3).add(dir3)
+		pos7 = cur_pos.add(dir1).add(dir1).add(dir1)
+		pos8 = cur_pos.add(dir2).add(dir2).add(dir2)
+		pos9 = cur_pos.add(dir3).add(dir3).add(dir3)
+		pos10 = cur_pos.add(dir1).add(dir2)
+		pos11 = cur_pos.add(dir1).add(dir3)
+		pos12 = cur_pos.add(dir2).add(dir1)
+		pos13 = cur_pos.add(dir2).add(dir3)
+		pos14 = cur_pos.add(dir3).add(dir1)
+		pos15 = cur_pos.add(dir3).add(dir2)
+
+		ct.draw_indicator_line(cur_pos, pos1, 255, 255, 255)
+		ct.draw_indicator_line(cur_pos, pos2, 255, 255, 255)
+		ct.draw_indicator_line(cur_pos, pos3, 255, 255, 255)
+		ct.draw_indicator_line(cur_pos, pos4, 255, 255, 255)
+		ct.draw_indicator_line(cur_pos, pos5, 255, 255, 255)
+		ct.draw_indicator_line(cur_pos, pos6, 255, 255, 255)
+		ct.draw_indicator_line(cur_pos, pos7, 255, 255, 255)
+		ct.draw_indicator_line(cur_pos, pos8, 255, 255, 255)
+		ct.draw_indicator_line(cur_pos, pos9, 255, 255, 255)
+		ct.draw_indicator_line(cur_pos, pos10, 255, 255, 255)
+		ct.draw_indicator_line(cur_pos, pos11, 255, 255, 255)
+		ct.draw_indicator_line(cur_pos, pos12, 255, 255, 255)
+		ct.draw_indicator_line(cur_pos, pos13, 255, 255, 255)
+		ct.draw_indicator_line(cur_pos, pos14, 255, 255, 255)
+		ct.draw_indicator_line(cur_pos, pos15, 255, 255, 255)
+
+
+
+
+		score1 = self.tileScoreConveyor(ct, cur_pos, pos1, loc,  allyScore, enemyScore, emptyScore)
+		score2 = self.tileScoreConveyor(ct, cur_pos, pos2, loc,  allyScore, enemyScore, emptyScore)
+		score3 = self.tileScoreConveyor(ct, cur_pos, pos3, loc,  allyScore, enemyScore, emptyScore)
+		score4 = self.tileScoreConveyor(ct, cur_pos, pos4, loc,  allyScore, enemyScore, emptyScore)
+		score5 = self.tileScoreConveyor(ct, cur_pos, pos5, loc, allyScore, enemyScore, emptyScore)
+		score6 = self.tileScoreConveyor(ct, cur_pos, pos6, loc, allyScore, enemyScore, emptyScore)
+		score7 = self.tileScoreConveyor(ct, cur_pos, pos7, loc, allyScore, enemyScore, emptyScore)
+		score8 = self.tileScoreConveyor(ct, cur_pos, pos8, loc, allyScore, enemyScore, emptyScore)
+		score9 = self.tileScoreConveyor(ct, cur_pos, pos9, loc, allyScore, enemyScore, emptyScore)
+		score10 = self.tileScoreConveyor(ct, cur_pos, pos10, loc, allyScore, enemyScore, emptyScore)
+		score11 = self.tileScoreConveyor(ct, cur_pos, pos11, loc,allyScore, enemyScore, emptyScore)
+		score12 = self.tileScoreConveyor(ct, cur_pos, pos12, loc,allyScore, enemyScore, emptyScore)
+		score13 = self.tileScoreConveyor(ct, cur_pos, pos13, loc,allyScore, enemyScore, emptyScore)
+		score14 = self.tileScoreConveyor(ct, cur_pos, pos14, loc,allyScore, enemyScore, emptyScore)
+		score15 = self.tileScoreConveyor(ct, cur_pos, pos15, loc,allyScore, enemyScore, emptyScore)
+
+
 		if(dir1 == self.toCardinal(dir1)):
 			score1 += 4
+		else:
+			score1 -= 3
 		if(dir2 == self.toCardinal(dir2)):
 			score2 += 4
+		else:
+			score2 -= 3
 		if(dir3 == self.toCardinal(dir3)):
 			score3 += 4
+		else:
+			score3 -= 3
+		score4 -= 2
+		score5 -= 2
+		score6 -= 2
+		score7 -= 1
+		score8 -= 1
+		score9 -= 1
+		score10 -= 2
+		score11 -= 2
+		score12 -= 2
+		score13 -= 2
+		score14 -= 2
+		score15 -= 2
 
-		if(cur_pos.add(dir1).distance_squared(loc) <= 2):
-			score1 += 10
-		if(cur_pos.add(dir2).distance_squared(loc) <= 2):
-			score2 += 10
-		if(cur_pos.add(dir3).distance_squared(loc) <= 2):
-			score3 += 10
-
-		ct.draw_indicator_line(cur_pos.add(dir1), cur_pos, 255, 255, 255)
-		ct.draw_indicator_line(cur_pos.add(dir2), cur_pos, 255, 255, 255)
-		ct.draw_indicator_line(cur_pos.add(dir3), cur_pos, 255, 255, 255)
 
 
-		if(self.canMove(ct, cur_pos.add(dirToTarget)) and score1 > bestScore and not cur_pos.add(dirToTarget) == self.lastLocation):
-			bestDir = dirToTarget
+		# print("SCORE: ", score1, score2, score3)
+		# ct.draw_indicator_line(pos1, cur_pos, 255, 255, 255)
+		# ct.draw_indicator_line(pos2, cur_pos, 255, 255, 255)
+		# ct.draw_indicator_line(pos3, cur_pos, 255, 255, 255)
+		# ct.draw_indicator_line(pos4, cur_pos, 255, 255, 255)
+		# ct.draw_indicator_line(pos5, cur_pos, 255, 255, 255)
+		# ct.draw_indicator_line(pos6, cur_pos, 255, 255, 255)
+		# ct.draw_indicator_line(pos7, cur_pos, 255, 255, 255)
+		# ct.draw_indicator_line(pos8, cur_pos, 255, 255, 255)
+		# ct.draw_indicator_line(pos9, cur_pos, 255, 255, 255)
+		# ct.draw_indicator_line(pos10, cur_pos, 255, 255, 255)
+		# ct.draw_indicator_line(pos11, cur_pos, 255, 255, 255)
+		# ct.draw_indicator_line(pos12, cur_pos, 255, 255, 255)
+		# ct.draw_indicator_line(pos13, cur_pos, 255, 255, 255)
+		# ct.draw_indicator_line(pos14, cur_pos, 255, 255, 255)
+		# ct.draw_indicator_line(pos15, cur_pos, 255, 255, 255)
+
+
+
+
+		if(self.canMove(ct, pos1) and score1 > bestScore and not pos1 == self.lastLocation):
+			bestDir = dir1
+			bestPos = pos1
 			bestScore = score1
-		if(self.canMove(ct, cur_pos.add(dirToTarget.rotate_left())) and score2 > bestScore and not cur_pos.add(dirToTarget.rotate_left()) == self.lastLocation):
-			bestDir = dirToTarget.rotate_left()
+		if(self.canMove(ct, pos2) and score2 > bestScore and not pos2 == self.lastLocation):
+			bestDir = dir2
+			bestPos = pos2
 			bestScore = score2
-		if(self.canMove(ct, cur_pos.add(dirToTarget.rotate_right())) and score3 > bestScore and not cur_pos.add(dirToTarget.rotate_right()) == self.lastLocation):
-			bestDir = dirToTarget.rotate_right()
+		if(self.canMove(ct, pos3) and score3 > bestScore and not pos3 == self.lastLocation):
+			bestDir = dir3
+			bestPos = pos3
 			bestScore = score3
-		return bestDir, bestScore, dirToTarget
+		if(self.canMove(ct, pos4) and score4 > bestScore and not pos4 == self.lastConnect):
+			bestDir = dir1
+			bestPos = pos4 
+			bestScore = score4
+		if(self.canMove(ct, pos5) and score5 > bestScore and not pos5 == self.lastConnect):
+			bestDir = dir2
+			bestPos = pos5 
+			bestScore = score5
+		if(self.canMove(ct, pos6) and score6 > bestScore and not pos6 == self.lastConnect):
+			bestDir = dir3
+			bestPos = pos6
+			bestScore = score6
+		if(self.canMove(ct, pos7) and score7 > bestScore and not pos7 == self.lastConnect):
+			bestDir = dir1
+			bestPos = pos7
+			bestScore = score6
+		if(self.canMove(ct, pos8) and score8 > bestScore and not pos8 == self.lastConnect):
+			bestDir = dir2
+			bestPos = pos8
+			bestScore = score8
+		if(self.canMove(ct, pos9) and score9 > bestScore and not pos9 == self.lastConnect):
+			bestDir = dir3
+			bestPos = pos9
+			bestScore = score9
+		if(self.canMove(ct, pos10) and score10 > bestScore and not pos10 == self.lastConnect):
+			bestDir = dir1
+			bestPos = pos10
+			bestScore = score10
+		if(self.canMove(ct, pos11) and score11 > bestScore and not pos11 == self.lastConnect):
+			bestDir = dir1
+			bestPos = pos11
+			bestScore = score11
+		if(self.canMove(ct, pos12) and score12 > bestScore and not pos12 == self.lastConnect):
+			bestDir = dir2
+			bestPos = pos12
+			bestScore = score12
+		if(self.canMove(ct, pos13) and score13 > bestScore and not pos13 == self.lastConnect):
+			bestDir = dir2
+			bestPos = pos13
+			bestScore = score13
+		if(self.canMove(ct, pos14) and score14 > bestScore and not pos14 == self.lastConnect):
+			bestDir = dir3
+			bestPos = pos14
+			bestScore = score14
+		if(self.canMove(ct, pos15) and score15 > bestScore and not pos15 == self.lastConnect):
+			bestDir = dir3
+			bestPos = pos15
+			bestScore = score15
+		
+		return bestDir, bestPos, bestScore, dirToTarget
 
 	def tryBuildConveyor(self, ct, pos, dir, save=True):
 		bid = ct.get_tile_building_id(pos)
@@ -448,6 +633,8 @@ class BugNav:
 		bteam = ct.get_team(bid)
 
 		nextPos = pos.add(dir)
+		if(not self.onTheMap(ct, nextPos) or not ct.is_in_vision(nextPos)):
+			return False
 		nextBid = ct.get_tile_building_id(nextPos)
 		nextBtype = ct.get_entity_type(nextBid)
 		nextBteam = ct.get_team(nextBid)
@@ -458,8 +645,7 @@ class BugNav:
 
 
 		if(nextBid is not None and nextBteam != ct.get_team()) or not self.canMove(ct, nextPos):
-			print("THIS?")
-			return
+			return False
 
 		if(bid is None):
 			if(ct.can_build_conveyor(pos, dir)):
@@ -576,15 +762,16 @@ class BugNav:
 		self.tryBuildRoad(ct, nextPos)
 
 
-	def MOVE_to_target_with_conveyor(self, ct, origin: Position, loc: Position,allyScore=2, enemyScore=-10, emptyScore=0):
+	def MOVE_to_target_with_conveyor(self, ct, origin: Position, loc: Position, dist=2):
 		# THIS HERE, EXPLORE USING CONVEYOR + ROAD, dont care about allyScore, enemyScore and emptyScore
-
-		ct.draw_indicator_line(ct.get_position(), loc, 255, 0, 0)
-
+		
+		ct.draw_indicator_line(ct.get_position(), loc, 255, 255, 0)
+		
 
 		if(not ct.get_move_cooldown() == 0): return
 		if(ct.get_global_resources()[0] < ct.get_conveyor_cost()[0]):
 			return
+
 
 
 		if(self.originConnect == None or self.originConnect != origin):
@@ -592,6 +779,11 @@ class BugNav:
 			self.lastConnect = origin
 			self.currentConnections = []
 			print("RESETED CONENCTIONS")
+
+
+		if(ct.get_position().distance_squared(self.lastConnect) > 2):
+			self.MOVE_to_target(ct, self.lastConnect, False, 0, 0, 0)
+			return
 
 
 		self.lastLocation = self.currentLocation
@@ -605,6 +797,9 @@ class BugNav:
 			self.lastLocation = ct.get_position()
 			print("RESETED CONENCTIONS2")
 
+		if(loc.distance_squared(self.lastConnect) <= dist):
+			return "STUCK"
+		
 		if(self.lastTargetLocation != None and self.lastTargetLocation.distance_squared(loc) <= 8):
 			self.lastTargetLocation = loc
 
@@ -612,14 +807,11 @@ class BugNav:
 		if(self.lastConnect != None):
 			ct.draw_indicator_line(self.lastConnect, Position(0, 0), 255, 255, 100)
 
-		if(ct.get_position().distance_squared(self.lastConnect) > 0):
-			self.MOVE_to_target(ct, self.lastConnect, False, 0, 0, 0)
-			return
-
 		if(self.lastConnect not in self.currentConnections):
 			self.currentConnections.append(self.lastConnect)
 		print(self.currentConnections)
-
+		# thứ duy nhất hắn có thể làm, cũng là điều duy nhất hắn muốn làm chính là kiên trì đến cùng
+		
 		while (
 			self.bugStackIndex != 0 and
 			(
@@ -644,56 +836,46 @@ class BugNav:
 		if(self.reachableFrom(ct, ct.get_position(), loc)):
 			self.bugStack = [None] * self.MAX_STACK_SIZE
 			self.bugStackIndex = 0
+		
+		bid = ct.get_tile_building_id(self.lastConnect)
+		btype = ct.get_entity_type(bid)
+		bteam = ct.get_team(bid)
+		if(bid != None):
+			if(bteam != ct.get_team()):
+				return "STUCK"
+			if(btype == EntityType.CONVEYOR):
+				conveyorDir = ct.get_direction(bid)
+				self.lastConnect = self.lastConnect.add(conveyorDir)
+			elif(btype == EntityType.BRIDGE):
+				self.lastConnect = ct.get_bridge_target(bid)
+			elif(btype == EntityType.ROAD):
+				pass
+			else:
+				return "STUCK"
+
 
 		if(self.bugStackIndex == 0):
-
-
-			bestDir, bestScore, dirToTarget = self.calcBestDirConveyor(ct, ct.get_position(), loc, allyScore, enemyScore, emptyScore)
-
-			if(bestDir is not None and bestScore > -20):
-				nextPos = ct.get_position().add(bestDir)
-
-				# if(ct.get_position() == origin):
-					# self.lastConnect = ct.get_position().add(bestDir)
-
-				bid = ct.get_tile_building_id(self.lastConnect)
-				btype = ct.get_entity_type(bid)
-				bteam = ct.get_team(bid)
-
-				if(bid != None):
-					if(bteam == ct.get_team()):
-						if(btype == EntityType.CONVEYOR):
-							self.lastConnect = self.lastConnect.add(ct.get_direction(bid))
-						if(btype == EntityType.BRIDGE):
-							self.lastConnect = ct.get_bridge_target(bid)
-
-				bestDir2, bestScore2, dirToTarget2 = self.calcBestDirConveyor(ct, ct.get_position().add(bestDir), loc, allyScore, enemyScore, emptyScore)
-				builded = False
-				
-				
-				if(bestDir == self.toCardinal(bestDir)):
-					if(ct.get_position() == self.lastConnect):
-						builded = builded or self.tryBuildConveyor(ct, self.lastConnect, bestDir)
+			if(self.lastConnect.distance_squared(loc) > 30):
+				allyScore = -1
+			else:
+				allyScore = -3
+			bestDir, bestPos, bestScore, dirToTarget = self.calcBestDirConveyor(ct, self.lastConnect, loc, allyScore, -25, 1)
+			
+			# ct.draw_indicator_line(Position(0, 0), bestPos, 255, 255, 255)
+			if(bestPos is not None and bestScore > -20):
+				if(self.lastConnect.distance_squared(bestPos) == 1):
+					self.tryBuildConveyor(ct, self.lastConnect, bestDir)
 				else:
-					if(ct.get_global_resources()[0] < ct.get_bridge_cost()[0]):
-						return
-					if(bestDir2 is not None and bestScore2 > -20):
-						bestDir3, bestScore3, dirToTarget3 = self.calcBestDirConveyor(ct, nextPos.add(bestDir2), loc, allyScore, enemyScore, emptyScore)
-						if(bestDir3 is not None and bestScore3 > -20):
-
-							nextPos2 = nextPos.add(bestDir2)
-							builded = builded or self.tryBuildBridge(ct, self.lastConnect, nextPos2.add(bestDir3))
-						builded = builded or self.tryBuildBridge(ct, self.lastConnect, nextPos.add(bestDir2))
-					builded = builded or self.tryBuildBridge(ct, self.lastConnect, nextPos)
+					self.tryBuildBridge(ct, self.lastConnect, bestPos)
 
 				if(ct.can_build_road(ct.get_position().add(bestDir))):
 					ct.build_road(ct.get_position().add(bestDir))
 
-				if(nextPos.distance_squared(self.lastConnect) < ct.get_position().distance_squared(self.lastConnect)):
+				if(bestPos.distance_squared(self.lastConnect) < ct.get_position().distance_squared(self.lastConnect)):
 					if(ct.can_move(bestDir)):
 						ct.move(bestDir)
-					return
-				if(ct.get_action_cooldown() > 0):
+						return
+				if(ct.get_action_cooldown() > 0 or ct.get_global_resources()[0] < ct.get_bridge_cost()[0]):
 					return
 
 			locCheck = ct.get_position().add(dirToTarget)
@@ -722,12 +904,13 @@ class BugNav:
 					self.bugStackIndex += 1
 
 				else:
-					if(not self.canMove(ct, ct.get_position().add(dir))):
-						continue
 					self.tryDirWithConveyor(ct, dir)
-					if(ct.get_position().add(dir).distance_squared(self.lastConnect) < ct.get_position().distance_squared(self.lastConnect)):
+					bestPos = ct.get_position().add(dir)
+					if(bestPos.distance_squared(self.lastConnect) < ct.get_position().distance_squared(self.lastConnect)):
 						if(ct.can_move(dir)):
 							ct.move(dir)
+							return
+					if(ct.get_action_cooldown() > 0 or ct.get_global_resources()[0] < ct.get_bridge_cost()[0]):
 						return
 				dir = dir.rotate_right()
 		else:
@@ -744,15 +927,16 @@ class BugNav:
 					self.bugStackIndex += 1
 
 				else:
-					if(not self.canMove(ct, ct.get_position().add(dir))):
-						continue
 					self.tryDirWithConveyor(ct, dir)
-					if(ct.get_position().add(dir).distance_squared(self.lastConnect) < ct.get_position().distance_squared(self.lastConnect)):
+					bestPos = ct.get_position().add(dir)
+					if(bestPos.distance_squared(self.lastConnect) < ct.get_position().distance_squared(self.lastConnect)):
 						if(ct.can_move(dir)):
 							ct.move(dir)
+							return
+					if(ct.get_action_cooldown() > 0 or ct.get_global_resources()[0] < ct.get_bridge_cost()[0]):
+						return
 				dir = dir.rotate_left()
 		if(ct.get_action_cooldown() == 0):
 			return "STUCK"
-		
 bugnav = BugNav()
 explore = Explore()

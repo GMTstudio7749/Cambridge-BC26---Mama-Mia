@@ -26,7 +26,36 @@ class Turret():
 
 		if self.my_type == EntityType.SENTINEL:
 			self.SENTINEL_run(ct)
+		if self.my_type == EntityType.GUNNER:
+			self.GUNNER_run(ct)
+	
+	def GUNNER_run(self, ct):
+		if ct.get_action_cooldown() != 0:
+			return
 
+		my_team = ct.get_team()
+		target_pos = ct.get_gunner_target()
+
+		if target_pos is None:
+			return
+
+		if not ct.can_fire(target_pos):
+			return
+
+		building_id = ct.get_tile_building_id(target_pos)
+		bot_id = ct.get_tile_builder_bot_id(target_pos)
+
+		if bot_id is not None:
+			if ct.get_team(bot_id) != my_team:
+				ct.fire(target_pos)
+			return
+
+		if building_id is not None:
+			ct.fire(target_pos)
+			return
+
+		ct.fire(target_pos)
+		
 	def SENTINEL_run(self, ct: Controller) :
 		"""Main sentinel runner"""
 		attack_pos = {}

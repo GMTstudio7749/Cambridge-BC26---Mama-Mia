@@ -8,7 +8,7 @@ class Builder:
         self.eco = BldEco()
         self.rush = BldRush()
 
-        self.work = "ECO"
+        self.work = "RUSH"
 
     #region ----- Builder GENERAL -----
     def BUILDER_setup(self, ct: Controller):
