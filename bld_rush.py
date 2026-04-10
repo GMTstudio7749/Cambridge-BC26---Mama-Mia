@@ -14,24 +14,40 @@ class BldRush():
         self.setup = False
 
         self.attackables = []
-        self.target_attackable = Position(-1, -1)
+        self.target_attackable = None
 
         self.attack_turn_count = 0
-        self.MODES = "NORMAL"
+        self.MODE = "NORMAL"
+        
+        self.place_marker_pos = []
+        self.tried_place_marker = []
+
 
     def GET_best_seen_attackable(self, ct):
         best_attackable = None
         best_score = 0
-        for i in range(len(self.attackables)):
-            for j in range(len(self.attackables[i])):
-                attackable = self.attackables[i][j] 
-                if(attackable.ignore > 0):
-                    continue
-                score = attackable.score
-                if(score > best_score):
-                    best_attackable, best_score = attackable, score
-        return best_attackable
+        cur = ct.get_position()
 
+        for dx in range(-15, 16):
+            for dy in range(-15, 16):
+                x = cur.x + dx
+                y = cur.y + dy
+
+                if not ctx.explore.IS_in_map(x, y):
+                    continue
+
+                attackable = self.attackables[x][y]
+
+                if attackable.ignore > 0:
+                    continue
+
+                score = attackable.score
+                if score > best_score:
+                    best_attackable, best_score = attackable, score
+        if(best_score > 3):
+            return best_attackable
+        return None
+    
     def ATTACKABLE_update(self, ct: Controller):
         for i in range(len(self.attackables)):
             for j in range(len(self.attackables[i])):
@@ -47,29 +63,41 @@ class BldRush():
         score, atype = self.GET_attackable_info(ct, attackable_pos)
     
         if(atype == self.attackables[attackable_pos.x][attackable_pos.y].type):
-            pass
+            self.attackables[attackable_pos.x][attackable_pos.y].score = score
+            self.attackables[attackable_pos.x][attackable_pos.y].type = atype
+
         else:
-            attackable = AttackableInfo(attackable_pos, score, atype)
-            self.attackables[attackable_pos.x][attackable_pos.y] = attackable
-        if(self.GOT_nearby_working_allies(ct, attackable_pos) > 0):
+            self.attackables[attackable_pos.x][attackable_pos.y].pos = attackable_pos
+            self.attackables[attackable_pos.x][attackable_pos.y].score = score
+            self.attackables[attackable_pos.x][attackable_pos.y].type = atype
+            self.attackables[attackable_pos.x][attackable_pos.y].ignore = 0
+
+        if(self.MODE == "HARASS" and self.attackables[attackable_pos.x][attackable_pos.y].type == ATTACK_TYPE.NORMAL and self.GOT_nearby_working_bot(ct, attackable_pos) > 0):
             self.attackables[attackable_pos.x][attackable_pos.y].ignore = MAX_ATTACKABLE_IGNORE_TURN 
 
-    def GOT_nearby_working_allies(self, ct, attackable_pos):
-        if(self.state == "HARASS"):
+    def GOT_nearby_working_bot(self, ct, attackable_pos):
+        if(self.MODE == "HARASS"):
             out = 0
             for dir in All_Dirs:
                 pos = attackable_pos.add(dir)
                 if(not ct.is_in_vision(pos) or not ctx.explore.IS_in_map(pos.x, pos.y)):
                     continue
                 bid = ct.get_tile_builder_bot_id(pos)
-                if(bid != None):
-                    out += 1
+                bteam = ct.get_team(bid)
+
+                if(bid != None and bid != ct.get_id()):
+                    if(bteam != ct.get_team() or ct.get_position() != attackable_pos):
+                        out += 1
             return out
         else:
+            # ct.draw_indicator_line(ct.get_position(), attackable_pos, 255, 255, 25)
             if(not ct.is_in_vision(attackable_pos) or not ctx.explore.IS_in_map(attackable_pos.x, attackable_pos.y)):
                 return 0
+            if(ct.get_position() == attackable_pos):
+                return 0
             bid = ct.get_tile_builder_bot_id(attackable_pos)
-            if(bid != ct.get_id()):
+            bteam = ct.get_team()
+            if(bid != ct.get_id() and bteam == ct.get_team()):
                 return 1
             return 0
 
@@ -81,21 +109,23 @@ class BldRush():
         bteam = ct.get_team(bid)
         
         if(env == Environment.WALL):
-            return 0, ""
+            return 0, ATTACK_TYPE.NONE
         if(bid == None):
-            return 1, ""
+            return 1, "PLACE_TURRET"
         if(bteam == ct.get_team()):
-            return 1, ""
+            return 1, ATTACK_TYPE.PLACE_TURRET
         if(btype == EntityType.CONVEYOR or btype == EntityType.BRIDGE):
-            score = 10
+            score = 20
+            score -= self.GOT_nearby_working_bot(ct, attackable_pos)
+            score -= ct.get_position().distance_squared(attackable_pos) ** 0.5 * 0.1
             if(self.enemy_core_pos != Position(-1, -1)):
                 score -= self.enemy_core_pos.distance_squared(attackable_pos) **0.5 * 0.01
-            return score, "NORMAL"
+            return score, ATTACK_TYPE.NORMAL
         if(btype == EntityType.ROAD):
-            return 2, ""
+            return 2, ATTACK_TYPE.PLACE_TURRET
         if(btype == EntityType.CORE):
-            return 0, ""
-        return 0, ""
+            return 0, ATTACK_TYPE.NONE
+        return 0, ATTACK_TYPE.NONE
 
     def RUSH_find_core(self, ct):
         explorePos = Position(-1, -1)
@@ -123,20 +153,32 @@ class BldRush():
             self.state = "BACK_TO_CORE"
 
     def RUSH_back_to_core(self, ct):
-        dir = ct.get_position().direction_to(self.enemy_core_pos)
-        target = ctx.CORE_POS
+        target = Position(-1, -1)
+        index = -1
+        for i in range(len(self.tried_place_marker)):
+            if(self.tried_place_marker[i] == False):
+                if(not ctx.explore.IS_in_map(self.place_marker_pos[i].x, self.place_marker_pos[i].y)):
+                    self.tried_place_marker[i] = False
+                    continue
+                target = self.place_marker_pos[i]
+                index = i
+                break
+        
         if(ct.get_position().distance_squared(target) > 2):
             ctx.bugnav.MOVE_to_target(ct, target, False)
         else:
-            for dir in All_Dirs:
-                pos = target.add(dir).add(dir)
-                if(abs(pos.x - ctx.CORE_POS.x) > 3 or abs(pos.y - ctx.CORE_POS.y) > 3 ):
-                    continue
-                if(ct.can_place_marker(pos)):
-                    ct.place_marker(pos, self.sym)
-                    self.state = "ATTACK"
-                    return
-                
+            bid = ct.get_tile_building_id(target)
+            bteam = ct.get_team(bid)
+            btype = ct.get_entity_type(bid)
+            if(bteam == ct.get_team()):
+                if(btype == EntityType.ROAD):
+                    if(ct.can_destroy(target)):
+                        ct.destroy(target)
+            if(ct.can_place_marker(target)):
+                ct.place_marker(target, self.sym)
+                self.state = "ATTACK"
+                return
+            self.tried_place_marker[index] = True
     def RUSH_attack(self, ct):
         if(self.enemy_core_pos == Position(-1, -1)):
             for bid in ct.get_nearby_buildings():
@@ -154,21 +196,25 @@ class BldRush():
             return
 
         self.target_attackable = self.GET_best_seen_attackable(ct)
-
+        # for i in ct.get_nearby_tiles():
+            # print(self.attackables[i.x][i.y].pos, self.attackables[i.x][i.y].score)
         if self.target_attackable == None:
             ctx.bugnav.MOVE_to_target(ct, self.enemy_core_pos, False)
         if(self.target_attackable != None):
-            self.attack_turn_count = 30
-            if(self.target_attackable.type == "NORMAL"):
+            self.attack_turn_count = MAX_ATTACK_TURN_COUNT
+            if(self.target_attackable.type == ATTACK_TYPE.NORMAL):
                 self.state = "ATTACK_TARGET_NORMAL"
 
     def RUSH_attack_target_normal(self, ct):
-        self.target_attackable.ignore = MAX_ATTACKABLE_IGNORE_TURN
+        if(self.target_attackable.type == ATTACK_TYPE.NORMAL):
+            self.target_attackable.ignore = 80
         if(ct.is_in_vision(self.target_attackable.pos)):
-            # if(self.GOT_nearby_working_allies(ct, self.target_attackable.pos) > 0):
+            # print(self.GOT_nearby_working_bot(ct, self.target_attackable.pos))
+            # if(self.GOT_nearby_working_bot(ct, self.target_attackable.pos) > 0):
                 # self.target_attackable.ignore = MAX_ATTACKABLE_IGNORE_TURN
                 # self.state = "ATTACK"
                 # return
+
             bid = ct.get_tile_building_id(self.target_attackable.pos)
             btype = ct.get_entity_type(bid)
             bteam = ct.get_team(bid)
@@ -187,39 +233,82 @@ class BldRush():
                 ct.build_gunner(self.target_attackable.pos, gunnerDir)
                 self.state = "ATTACK"
                 return
+
             if(bteam == ct.get_team() and btype == EntityType.GUNNER):
                 self.state = "ATTACK"
                 return
             
-            nextPos = Position(-1, -1)
-            if(btype == EntityType.CONVEYOR):
-                nextPos = self.target_attackable.pos.add(ct.get_direction(bid))
-            elif(btype == EntityType.BRIDGE):
-                nextPos = ct.get_bridge_target(bid)
-            print("IGNORE: ", self.attackables[nextPos.x][nextPos.y].ignore)
-            if(nextPos != Position(-1, -1) and self.attackables[nextPos.x][nextPos.y].score > 0 and self.attackables[nextPos.x][nextPos.y].ignore < 10):
-                self.target_attackable = self.attackables[nextPos.x][nextPos.y]
-            
+            if(self.MODE == "NORMAL"):
+                nextPos = Position(-1, -1)
+                if(btype == EntityType.CONVEYOR):
+                    nextPos = self.target_attackable.pos.add(ct.get_direction(bid))
+                elif(btype == EntityType.BRIDGE):
+                    nextPos = ct.get_bridge_target(bid)
+                if(self.attackables[nextPos.x][nextPos.y].ignore > 0):
+                    self.state = "ATTACK"
+                    return
+                if(nextPos != Position(-1, -1) and self.attackables[nextPos.x][nextPos.y].score > 0):
+                    self.target_attackable = self.attackables[nextPos.x][nextPos.y]
+                    self.attack_turn_count = MAX_ATTACK_TURN_COUNT
             if(ct.can_fire(self.target_attackable.pos)):
                 ct.fire(self.target_attackable.pos)
-
+        else:
+            self.attack_turn_count = MAX_ATTACK_TURN_COUNT
         ctx.bugnav.MOVE_to_target(ct, self.target_attackable.pos, False)
     
 
     def RUSH_run(self, ct: Controller):
         """Main RUSH builder function"""
-
+        print(self.MODE)
         if(ct.get_current_round() == 1):
             self.state = "FIND_CORE"
         if(not self.setup):
             self.setup = True
-            defaultInfo = AttackableInfo(Position(0, 0), 0, "")
-            for i in range(ct.get_map_width()):
-                self.attackables.append([])
-                for j in range(ct.get_map_height()):
-                    defaultInfo.pos = Position(i, j)
-                    self.attackables[i].append(defaultInfo)
+            
+            width = ct.get_map_width()
+            height = ct.get_map_height()
+
+            print("1: ",ct.get_cpu_time_elapsed())
+
+            self.attackables = [
+                [AttackableInfo(Position(i, j), 0, ATTACK_TYPE.NONE) for j in range(height)]
+                for i in range(width)
+            ]
+            print("2: ",ct.get_cpu_time_elapsed())
+
             self.explored_sym_loc =  [Position(ct.get_map_width()-ctx.CORE_POS.x-1, ctx.CORE_POS.y),  Position(ct.get_map_width()-ctx.CORE_POS.x-1, ct.get_map_height()-ctx.CORE_POS.y-1),Position(ctx.CORE_POS.x, ct.get_map_height()-ctx.CORE_POS.y-1) ]
+
+            self.tried_place_marker = [False] * 16
+            self.place_marker_pos.append(ctx.CORE_POS.add(Direction.SOUTH).add(Direction.SOUTHEAST))
+            self.place_marker_pos.append(ctx.CORE_POS.add(Direction.SOUTH).add(Direction.SOUTHWEST))
+            self.place_marker_pos.append(ctx.CORE_POS.add(Direction.SOUTH).add(Direction.SOUTH))
+            self.place_marker_pos.append(ctx.CORE_POS.add(Direction.SOUTH).add(Direction.SOUTHEAST).add(Direction.EAST))
+            self.place_marker_pos.append(ctx.CORE_POS.add(Direction.SOUTH).add(Direction.SOUTHWEST).add(Direction.WEST))
+
+            self.place_marker_pos.append(ctx.CORE_POS.add(Direction.EAST).add(Direction.NORTHEAST))
+            self.place_marker_pos.append(ctx.CORE_POS.add(Direction.EAST).add(Direction.SOUTHEAST))
+            self.place_marker_pos.append(ctx.CORE_POS.add(Direction.EAST).add(Direction.EAST))
+            self.place_marker_pos.append(ctx.CORE_POS.add(Direction.EAST).add(Direction.NORTHEAST).add(Direction.NORTH))
+            self.place_marker_pos.append(ctx.CORE_POS.add(Direction.EAST).add(Direction.SOUTHEAST).add(Direction.SOUTH))
+
+            self.place_marker_pos.append(ctx.CORE_POS.add(Direction.WEST).add(Direction.NORTHWEST))
+            self.place_marker_pos.append(ctx.CORE_POS.add(Direction.WEST).add(Direction.SOUTHWEST))
+            self.place_marker_pos.append(ctx.CORE_POS.add(Direction.WEST).add(Direction.WEST))
+            self.place_marker_pos.append(ctx.CORE_POS.add(Direction.WEST).add(Direction.NORTHWEST).add(Direction.NORTH))
+            self.place_marker_pos.append(ctx.CORE_POS.add(Direction.WEST).add(Direction.SOUTHWEST).add(Direction.SOUTH))
+
+            self.place_marker_pos.append(ctx.CORE_POS.add(Direction.NORTHEAST).add(Direction.NORTHEAST))
+            self.place_marker_pos.append(ctx.CORE_POS.add(Direction.NORTHWEST).add(Direction.NORTHWEST))
+            self.place_marker_pos.append(ctx.CORE_POS.add(Direction.SOUTHEAST).add(Direction.SOUTHEAST))
+            self.place_marker_pos.append(ctx.CORE_POS.add(Direction.SOUTHWEST).add(Direction.SOUTHWEST))
+
+            self.place_marker_pos.append(ctx.CORE_POS.add(Direction.NORTH).add(Direction.NORTH).add(Direction.NORTH))
+            self.place_marker_pos.append(ctx.CORE_POS.add(Direction.SOUTH).add(Direction.SOUTH).add(Direction.SOUTH))
+            self.place_marker_pos.append(ctx.CORE_POS.add(Direction.EAST).add(Direction.EAST).add(Direction.EAST))
+            self.place_marker_pos.append(ctx.CORE_POS.add(Direction.WEST).add(Direction.WEST).add(Direction.WEST))
+            print("3    : ",ct.get_cpu_time_elapsed())
+
+
 
         print(self.state)
         self.ATTACKABLE_update(ct)
@@ -229,9 +318,11 @@ class BldRush():
             if(self.attack_turn_count == 0):
                 if(self.target_attackable != None):
                     self.target_attackable.ignore = 100
-                    self.MODES = "HARASS"
+                    self.MODE = "HARASS"
                 self.state = "ATTACK"
 
+        if(self.target_attackable != None):
+            ct.draw_indicator_line(ct.get_position(), self.target_attackable.pos,255, 0, 0)
         if(self.state == "FIND_CORE"):
             self.RUSH_find_core(ct)
         elif(self.state == "ATTACK"):
@@ -240,6 +331,7 @@ class BldRush():
             self.RUSH_attack_target_normal(ct)
         elif(self.state == "BACK_TO_CORE"):
             self.RUSH_back_to_core(ct)
+            
             
 
         

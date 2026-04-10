@@ -139,7 +139,12 @@ class BugNav:
 				self.mapInfos[pos.x][pos.y] = Environment.WALL
 			elif(not ct.is_tile_empty(pos)):
 				bid = ct.get_tile_building_id(pos)
-				self.mapInfos[pos.x][pos.y] = ct.get_entity_type(bid)
+				bteam = ct.get_team(bid)
+				btype = ct.get_entity_type(bid)
+				if(btype == EntityType.CORE and bteam != ct.get_team()):
+					self.mapInfos[pos.x][pos.y] = "ECORE"
+				else:
+					self.mapInfos[pos.x][pos.y] = ct.get_entity_type(bid)
 			else:
 				self.mapInfos[pos.x][pos.y] = Environment.EMPTY
 				if(ct.get_tile_env(pos) == Environment.ORE_TITANIUM ):
@@ -150,6 +155,8 @@ class BugNav:
 	def canMove(self, ct, loc):
 
 		if(not self.onTheMap(ct, loc)): return False
+		if(ct.is_in_vision(loc) and ct.get_tile_builder_bot_id(loc) != None):
+			return False
 		return self.mapInfos[loc.x][loc.y] == EntityType.CORE or self.mapInfos[loc.x][loc.y] == EntityType.ROAD or self.mapInfos[loc.x][loc.y] == Environment.EMPTY  or self.mapInfos[loc.x][loc.y] == EntityType.CONVEYOR or self.mapInfos[loc.x][loc.y] == EntityType.BRIDGE
 
 
@@ -164,7 +171,7 @@ class BugNav:
 			return False
 		targetInfo = self.mapInfos[target.x][target.y]
 
-		if(targetInfo == None or targetInfo == Environment.WALL or targetInfo == EntityType.BARRIER or targetInfo == EntityType.HARVESTER):
+		if(targetInfo == None or targetInfo == Environment.WALL or targetInfo == EntityType.BARRIER or targetInfo == EntityType.HARVESTER or targetInfo == "ECORE"):
 			
 			return False
 		checkLoc = loc
@@ -481,21 +488,21 @@ class BugNav:
 		pos14 = cur_pos.add(dir3).add(dir1)
 		pos15 = cur_pos.add(dir3).add(dir2)
 
-		ct.draw_indicator_line(cur_pos, pos1, 255, 255, 255)
-		ct.draw_indicator_line(cur_pos, pos2, 255, 255, 255)
-		ct.draw_indicator_line(cur_pos, pos3, 255, 255, 255)
-		ct.draw_indicator_line(cur_pos, pos4, 255, 255, 255)
-		ct.draw_indicator_line(cur_pos, pos5, 255, 255, 255)
-		ct.draw_indicator_line(cur_pos, pos6, 255, 255, 255)
-		ct.draw_indicator_line(cur_pos, pos7, 255, 255, 255)
-		ct.draw_indicator_line(cur_pos, pos8, 255, 255, 255)
-		ct.draw_indicator_line(cur_pos, pos9, 255, 255, 255)
-		ct.draw_indicator_line(cur_pos, pos10, 255, 255, 255)
-		ct.draw_indicator_line(cur_pos, pos11, 255, 255, 255)
-		ct.draw_indicator_line(cur_pos, pos12, 255, 255, 255)
-		ct.draw_indicator_line(cur_pos, pos13, 255, 255, 255)
-		ct.draw_indicator_line(cur_pos, pos14, 255, 255, 255)
-		ct.draw_indicator_line(cur_pos, pos15, 255, 255, 255)
+		# ct.draw_indicator_line(cur_pos, pos1, 255, 255, 255)
+		# ct.draw_indicator_line(cur_pos, pos2, 255, 255, 255)
+		# ct.draw_indicator_line(cur_pos, pos3, 255, 255, 255)
+		# ct.draw_indicator_line(cur_pos, pos4, 255, 255, 255)
+		# ct.draw_indicator_line(cur_pos, pos5, 255, 255, 255)
+		# ct.draw_indicator_line(cur_pos, pos6, 255, 255, 255)
+		# ct.draw_indicator_line(cur_pos, pos7, 255, 255, 255)
+		# ct.draw_indicator_line(cur_pos, pos8, 255, 255, 255)
+		# ct.draw_indicator_line(cur_pos, pos9, 255, 255, 255)
+		# ct.draw_indicator_line(cur_pos, pos10, 255, 255, 255)
+		# ct.draw_indicator_line(cur_pos, pos11, 255, 255, 255)
+		# ct.draw_indicator_line(cur_pos, pos12, 255, 255, 255)
+		# ct.draw_indicator_line(cur_pos, pos13, 255, 255, 255)
+		# ct.draw_indicator_line(cur_pos, pos14, 255, 255, 255)
+		# ct.draw_indicator_line(cur_pos, pos15, 255, 255, 255)
 
 
 
