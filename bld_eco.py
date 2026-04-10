@@ -11,34 +11,34 @@ class BldEco:
         self.start_building_pos = Position(-1, -1)
 
     #region ----- GET function -----
-    def GET_best_seen_ore(self, ct: Controller):
-        """Get the nearest resource ore position FROM CORE\n
-           Prior titanium > anxionite\n
+    def GET_best_seen_ore(self, ct: Controller, cook: str):
+        """Get the best seen ore position, shortest distance to ore\n
+           If cook == "TIT" => Prior TIT > AXI\n
+           If cook == "AXI" => Choose AXI only\n
            Return Position(-1, -1) if found nothing"""
         best_ore = Position(-1, -1)
         min_dis = 9999
         prior = "AXI"
-
+        
         my_pos = ct.get_position()
         for ore in ctx.Ores.values():
+            # Critical condition
             if ore.IS_ore_ignore(): continue
-
-            if ore.harv: continue
-            if ore.mark == 36: continue
             
             core_dis = ctx.CORE_POS.distance_squared(ore.pos)
             my_dis = ore.pos.distance_squared(my_pos)
 
             if ore.env == Environment.ORE_TITANIUM:
+                if ore.harv and ore.linked_core: continue
                 if core_dis >= self.Core_Search_Range:
-                    if ore.mark == 67 or ore.barr > 0:
+                    if ore.barr == 1: # Ensure block barrier
                         continue
                 prior = "TIT"
 
             elif ore.env == Environment.ORE_AXIONITE:
-                continue
                 if prior != "AXI": continue
-                if barr or mval != -1: continue
+                if ore.harv: continue
+                if ore.barr or ore.mark != -1: continue
                 if my_dis > 9: continue
             
             if best_ore == Position(-1, -1) or core_dis < min_dis:
@@ -46,66 +46,51 @@ class BldEco:
         return best_ore
     #endregion
     
-    def ECO_update(self, ct: Controller):
+    #region ----- ECO general -----
+    def ECO_update(self):
         """Update for eco builders"""
-        self.Core_Search_Range = 150 + ctx.Cur_Round // 2
-        
-    #region --- BUILDER STATE WORK ---
-    def BUILDER_switch_explore(self, ct: Controller):
-        """Switch state explore immediately in order to save cooldown"""
-        self.state = "EXPLORE"
-        self.target_ore = Position(-1, -1)
-        self.start_building_pos = Position(-1, -1)
-        self.BUILDER_explore(ct)
-
-    def BUILDER_explore(self, ct: Controller):
-        """Builder robot explore function"""
-        self.target_ore = self.GET_best_seen_ore(ct)
-        if self.target_ore == Position(-1, -1):
-            ctx.explore.MOVE_explore(ct, 10, 30)
-            ctx.ORE_update(ct)
-            self.target_ore = self.GET_best_seen_ore(ct)
-        
-        if self.target_ore != Position(-1, -1):
-            x = self.BUILDER_move_to_ore(ct, self.target_ore)
-            if x == "LEAVE":
-                self.target_ore = Position(-1, -1)
-                self.start_building_pos = Position(-1, -1)
-            elif x == "OKE":
-                self.state = "BUILD_AT_ORE"
-                return
+        self.Core_Search_Range = 100 + ctx.Cur_Round
     
-    def BUILDER_move_to_ore(self, ct: Controller, ore_pos: Position):
-        """Builder move to targeted ore position\n
-           Place a marker (36) on the ore to announce occupied\n
+    def ECO_debug(self, ct: Controller):
+        """Debug eco builders"""
+        # Output
+        print("\n=== ECO stat ===")
+        print(f"+ State: {self.state}")
+        print(f"Target ore: ({self.target_ore.x},{self.target_ore.y})")
+        print(f"Start_building_pos: ({self.start_building_pos.x},{self.start_building_pos.y})")
+        # Draw
+        ct.draw_indicator_dot(self.target_ore, 255, 255, 100)
+    #endregion
+
+    #region ----- ECO move / act -----
+    def ECO_move_to_ore(self, ct: Controller, ore_pos: Position):
+        """ECO builder move to targeted ore pos\n
            Return "OKE" if work finished, "LEAVE" if need to leave\n
            "MORE" if not yet finished"""
         '''if self.CHECK_ore_protected(ct, ore_pos):
             return "LEAVE"'''
-        if ctx.GET_marker_val(ct, ore_pos) == 36:
-            return "LEAVE"
+        # if ctx.CHECK_harvester(ct, ore_pos): return "LEAVE"
+        # if ctx.CHECK_barrier(ct, ore_pos) == 2: return "LEAVE"
         
-        # Move & place marker
         cur_dis = ore_pos.distance_squared(ct.get_position())
-        if cur_dis <= 2:
-            if ct.can_place_marker(ore_pos):
-                ct.place_marker(ore_pos, 36)
-            return "OKE"
+        if cur_dis <= 9: # Check for blockace, if too far still target
+            if ctx.CHECK_harvester(ct, ore_pos): return "LEAVE"
+            if ctx.CHECK_barrier(ct, ore_pos) > 0: return "LEAVE"
+        if cur_dis <= 2: return "OKE"
+
+        # Move to target
         elif ct.get_move_cooldown() == 0:
             ctx.bugnav.MOVE_to_target(ct, ore_pos, False)
             new_dis = ore_pos.distance_squared(ct.get_position())
-            if new_dis <= 2:
-                if ct.can_place_marker(ore_pos):
-                    ct.place_marker(ore_pos, 36)				
-                return "OKE"
+            if new_dis <= 2: return "OKE"
 
         return "MORE"
 
-    def BUILDER_build_at_ore(self, ct: Controller, ore_pos: Position):
-        """Builder build machine / protect empty ore state function\n
+    def ECO_build_at_ore(self, ct: Controller, ore_pos: Position):
+        """ECO builder build machine / protect empty ore state function\n
            ONLY work with DISTANCE <= 8 from working ore\n
            Return "HARV" if build harvester, "BLOCK" if build barrier,\n
-           FAIL if failed, MORE if not yet done"""
+           "FAIL" if failed, "MORE" if not yet done"""
         if ore_pos == Position(-1, -1): return "FAIL"
 
         '''# Move if distance > 8
@@ -137,27 +122,36 @@ class BldEco:
                             ct.move(d)
                             break'''
             
-            
+        if ctx.CHECK_harvester(ct, ore_pos): return "FAIL"
+        if ctx.CHECK_barrier(ct, ore_pos) == 2: return "FAIL"
 
-        if ctx.CHECK_harvester(ct, ore_pos):
-            return "FAIL"
-        
-        if ctx.GET_marker_val(ct, ore_pos) != 67:
-            if ct.can_destroy(ore_pos):
-                ct.destroy(ore_pos)
         if ore_pos.distance_squared(ct.get_position()) > 2:
+            if ct.get_move_cooldown() > 0:
+                ctx.bugnav.MOVE_to_target(ct, ore_pos, False)
             return "MORE"
         
         # Build action
-        if ct.get_action_cooldown() > 0: return "MORE"
         env = ct.get_tile_env(ore_pos)
         dis_to_core = ctx.CORE_POS.distance_squared(ore_pos)
         if env == Environment.ORE_AXIONITE:
-            if ct.can_place_marker(ore_pos):
-                ct.place_marker(ore_pos, 67)
-            return "MARK"
+            if ct.can_build_barrier(ore_pos):
+                ct.build_barrier(ore_pos)
+            return "BLOCK"
         
         elif env == Environment.ORE_TITANIUM:
+            # WARNING: check building on ore for further decision
+            # Case: Enemy passable building
+            ID = ct.get_tile_building_id(ore_pos)
+            if ID is not None:
+                if ct.get_team(ID) != ctx.MY_TEAM:
+                    pass
+            # Case: Enemy unpassable building
+            # Case: Ally building (no pass / unpass)
+            # Case: Empty
+            if ctx.GET_marker_val(ct, ore_pos) > 0:
+                if ct.can_destroy(ore_pos):
+                    ct.destroy(ore_pos)
+
             if dis_to_core >= self.Core_Search_Range:
                 if ct.can_build_barrier(ore_pos):
                     ct.build_barrier(ore_pos)
@@ -177,22 +171,46 @@ class BldEco:
             # Build
             if ct.can_build_harvester(ore_pos):
                 ct.build_harvester(ore_pos)
-                my_pos = ct.get_position()
-                self.start_building_pos = my_pos
-                if my_pos.distance_squared(ore_pos) == 1:
-                    self.start_building_pos = my_pos
-                else:
-                    for dir in Straight_Dirs:
-                        next_pos = my_pos.add(dir)
-                        if next_pos.distance_squared(ore_pos) == 1:
-                            self.start_building_pos = next_pos
-                            break
+
+                best_pos = Position(-1, -1)
+                min_dis = 9999
+                dxy = [[-1, 0], [1, 0], [0, -1], [0, 1]]
+                for dx, dy in dxy:
+                    check_pos = Position(ore_pos.x + dx, ore_pos.y + dy)
+                    if not ctx.IS_in_map(check_pos): continue
+                    if not ct.is_in_vision(check_pos): continue
+
+                    # Empty env only
+                    env = ct.get_tile_env(check_pos)
+                    if env != Environment.EMPTY: continue
+
+                    # Check for buildings
+                    ID = ct.get_tile_building_id(check_pos)
+                    if ID is not None:
+                        type = ct.get_entity_type(ID)
+                        if not type in [EntityType.ROAD, EntityType.MARKER]:
+                            continue
+
+                    # Compare distance
+                    dis = ctx.CORE_POS.distance_squared(check_pos)
+                    if best_pos == Position(-1, -1) or dis < min_dis:
+                        best_pos, min_dis = check_pos, dis
+                self.start_building_pos = best_pos
                 return "HARV"
         return "MORE"
     
-    def BUILDER_link_back_core(self, ct: Controller, start_build_pos: Position):
-        """Builder link harvester back to core
+    def ECO_link_back_core(self, ct: Controller, start_build_pos: Position):
+        """ECO builder link harvester back to core
         Depends on start build position"""
+        # Destroy under foot blocks first
+        my_pos = ct.get_position()
+        ID = ct.get_tile_building_id(my_pos)
+        if ID is not None:
+            if ct.get_team(ID) != ctx.MY_TEAM:
+                if ct.can_fire(my_pos):
+                    ct.fire(my_pos)
+                return "FIRING"
+
         link = ctx.bugnav.MOVE_to_target_with_conveyor(ct, start_build_pos, ctx.CORE_POS)
         if link == "STUCK":
             return "STUCK"
@@ -201,28 +219,59 @@ class BldEco:
             return "DONE"
     #endregion
 
+    #region ----- ECO state -----
+    def ECO_switch_explore(self, ct: Controller):
+        """Switch state "EXPLORE" immediately in order to save cooldown"""
+        self.state = "EXPLORE"
+        self.target_ore = Position(-1, -1)
+        self.start_building_pos = Position(-1, -1)
+        self.ECO_explore(ct)
+
+    def ECO_explore(self, ct: Controller):
+        """ECO builder explore function"""
+        # Haven't seen anything yet
+        if self.target_ore == Position(-1, -1):
+            self.target_ore = self.GET_best_seen_ore(ct, "TIT")
+            
+            if self.target_ore == Position(-1, -1):
+                ctx.explore.MOVE_explore(ct, 10, 30)
+                ctx.ORE_update(ct)
+                self.target_ore = self.GET_best_seen_ore(ct, "TIT")
+        
+        # Head to targeting ore
+        if self.target_ore != Position(-1, -1):
+            x = self.ECO_move_to_ore(ct, self.target_ore)
+            if x == "LEAVE":
+                self.target_ore = Position(-1, -1)
+                self.start_building_pos = Position(-1, -1)
+            elif x == "OKE":
+                self.state = "BUILD_AT_ORE"
+                return
+    
+    #endregion
+
     def ECO_run(self, ct: Controller):
         """Main ECO builder function"""
-        self.ECO_update(ct)
+        self.ECO_update()
 
         if self.state == "EXPLORE":
-            self.BUILDER_explore(ct)
+            self.ECO_explore(ct)
 
         if self.state == "BUILD_AT_ORE":
-            x = self.BUILDER_build_at_ore(ct, self.target_ore)
+            x = self.ECO_build_at_ore(ct, self.target_ore)
             if x in ["MARK", "BLOCK", "FAIL"]:
+                ctx.ORE_ignore(self.target_ore, 10)
                 self.target_ore = Position(-1, -1)
-                self.BUILDER_switch_explore(ct)
+                self.ECO_switch_explore(ct)
+                
             elif x == "HARV":
                 self.state = "LINK_BACK_CORE"
         
         if self.state == "LINK_BACK_CORE":
-            x = self.BUILDER_link_back_core(ct, self.start_building_pos)
+            x = self.ECO_link_back_core(ct, self.start_building_pos)
             if x in ["DONE", "STUCK"]:
-                self.BUILDER_switch_explore(ct)
+                self.ECO_switch_explore(ct)
 
-        print(self.state)
-        print("Target ore: (", self.target_ore.x, self.target_ore.y, ")")
-        ct.draw_indicator_dot(self.target_ore, 255, 255, 100)
-
-        ctx.ORE_debug()
+        self.ECO_debug(ct)
+        # ctx.explore.EXPLORE_debug(ct)
+        # ctx.ORE_debug()

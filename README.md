@@ -1,4 +1,3 @@
-# Version 2.1
+# Version 3.1
 
 # Update / Feature
-1. Add turret function (Sentinel)
