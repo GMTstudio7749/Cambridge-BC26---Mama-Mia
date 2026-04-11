@@ -22,6 +22,37 @@ class BldRush():
         self.place_marker_pos = []
         self.tried_place_marker = []
 
+        self.bots_pos = {}
+
+    def RUSH_sense_nearby(self, ct):
+        self.bots_pos = {}
+        spread = []
+        for bid in ct.get_nearby_units():
+
+            i = ct.get_position(bid) 
+            btype = ct.get_entity_type(bid)
+            bteam = ct.get_team(bid)
+            if(btype != EntityType.BUILDER_BOT ):
+                continue
+
+            if(self.MODE == "NORMAL"):
+                if(bid == ct.get_id() or bteam == ct.get_team()):
+                    pass
+                else:
+                    self.bots_pos[i] = 1
+            else:
+                if(bid == ct.get_id()):
+                    pass
+                else:
+                    self.bots_pos[i] = 1
+                    spread.append(i)
+                    
+        for i in spread:
+            for dir in Dirs:
+                pos = i.add(dir)
+                self.bots_pos[pos] = self.bots_pos.get(pos, 0) + 1
+        print("4: ", ct.get_cpu_time_elapsed())
+
 
     def GET_best_seen_attackable(self, ct):
         best_attackable = None
@@ -74,20 +105,13 @@ class BldRush():
 
         if(self.MODE == "HARASS" and self.attackables[attackable_pos.x][attackable_pos.y].type == ATTACK_TYPE.NORMAL and self.GOT_nearby_working_bot(ct, attackable_pos) > 0):
             self.attackables[attackable_pos.x][attackable_pos.y].ignore = MAX_ATTACKABLE_IGNORE_TURN 
+    
 
     def GOT_nearby_working_bot(self, ct, attackable_pos):
+        if(not ct.is_in_vision(attackable_pos) or not ctx.explore.IS_in_map(attackable_pos.x, attackable_pos.y)):
+            return 0
         if(self.MODE == "HARASS"):
-            out = 0
-            for dir in All_Dirs:
-                pos = attackable_pos.add(dir)
-                if(not ct.is_in_vision(pos) or not ctx.explore.IS_in_map(pos.x, pos.y)):
-                    continue
-                bid = ct.get_tile_builder_bot_id(pos)
-                bteam = ct.get_team(bid)
-
-                if(bid != None and bid != ct.get_id()):
-                    if(bteam != ct.get_team() or ct.get_position() != attackable_pos):
-                        out += 1
+            out = self.bots_pos.get(attackable_pos, 0)
             return out
         else:
             # ct.draw_indicator_line(ct.get_position(), attackable_pos, 255, 255, 25)
@@ -95,11 +119,7 @@ class BldRush():
                 return 0
             if(ct.get_position() == attackable_pos):
                 return 0
-            bid = ct.get_tile_builder_bot_id(attackable_pos)
-            bteam = ct.get_team()
-            if(bid != ct.get_id() and bteam == ct.get_team()):
-                return 1
-            return 0
+            return self.bots_pos.get(attackable_pos, 0)
 
 
     def GET_attackable_info(self, ct, attackable_pos):
@@ -207,13 +227,13 @@ class BldRush():
 
     def RUSH_attack_target_normal(self, ct):
         if(self.target_attackable.type == ATTACK_TYPE.NORMAL):
-            self.target_attackable.ignore = 80
+            self.target_attackable.ignore = 30
         if(ct.is_in_vision(self.target_attackable.pos)):
             # print(self.GOT_nearby_working_bot(ct, self.target_attackable.pos))
-            # if(self.GOT_nearby_working_bot(ct, self.target_attackable.pos) > 0):
-                # self.target_attackable.ignore = MAX_ATTACKABLE_IGNORE_TURN
-                # self.state = "ATTACK"
-                # return
+            if(self.MODE == "HARASS" and self.GOT_nearby_working_bot(ct, self.target_attackable.pos) > 0):
+                self.target_attackable.ignore = MAX_ATTACKABLE_IGNORE_TURN
+                self.state = "ATTACK"
+                return
 
             bid = ct.get_tile_building_id(self.target_attackable.pos)
             btype = ct.get_entity_type(bid)
@@ -260,9 +280,12 @@ class BldRush():
     def RUSH_run(self, ct: Controller):
         """Main RUSH builder function"""
         print(self.MODE)
+        
         if(ct.get_current_round() == 1):
             self.state = "FIND_CORE"
         if(not self.setup):
+            if(ct.get_current_round() == 4):
+                self.MODE = "HARASS"
             self.setup = True
             
             width = ct.get_map_width()
@@ -320,6 +343,7 @@ class BldRush():
                     self.target_attackable.ignore = 100
                     self.MODE = "HARASS"
                 self.state = "ATTACK"
+        self.RUSH_sense_nearby(ct)
 
         if(self.target_attackable != None):
             ct.draw_indicator_line(ct.get_position(), self.target_attackable.pos,255, 0, 0)
