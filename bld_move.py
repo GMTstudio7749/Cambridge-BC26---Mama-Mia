@@ -14,6 +14,8 @@ class Explore:
 		self.Explore_Turn = -1
 
 		self.bugnav = BugNav()
+
+		self.dangerous_tiles =  {}
 	
 	def EXPLORE_setup(self, ct: Controller, spawn_pos: Position, core_pos: Position):
 		"""Setup explore move function infos and const, along with bugnav"""
@@ -126,12 +128,18 @@ class BugNav:
 
 		self.currentConnections = []
 
+		self.dangerous_tiles = set()
+
+
+
 	def SETUP(self, ct):
 		# run this in turn 1 pls
 		self.mapInfos =  [[None for _ in range(ct.get_map_height())] for _ in range(ct.get_map_width())]
 
 	def SENSE_nearby(self, ct):
 		#run this first every turn for the bugnav to see the environment
+		self.dangerous_tiles = set()
+
 		for pos in ct.get_nearby_tiles():
 			if(not self.onTheMap(ct, pos)):
 				continue
@@ -143,25 +151,39 @@ class BugNav:
 				btype = ct.get_entity_type(bid)
 				if(btype == EntityType.CORE and bteam != ct.get_team()):
 					self.mapInfos[pos.x][pos.y] = "ECORE"
+
 				else:
 					self.mapInfos[pos.x][pos.y] = ct.get_entity_type(bid)
+				if(btype in Turret_Type and bteam != ct.get_team()):
+					if(btype == EntityType.LAUNCHER):
+						for i in ct.get_attackable_tiles_from(pos,Direction.NORTH ,btype):
+							self.dangerous_tiles.add(i)
+					else:
+						for i in ct.get_attackable_tiles_from(pos, ct.get_direction(bid), btype):
+							self.dangerous_tiles.add(i)
+
 			else:
 				self.mapInfos[pos.x][pos.y] = Environment.EMPTY
 				if(ct.get_tile_env(pos) == Environment.ORE_TITANIUM ):
 					self.mapInfos[pos.x][pos.y] = Environment.ORE_TITANIUM 
 				if(ct.get_tile_env(pos) == Environment.ORE_AXIONITE):
 					self.mapInfos[pos.x][pos.y] = Environment.ORE_AXIONITE
+	
+
 
 	def canMove(self, ct, loc):
 
 		if(not self.onTheMap(ct, loc)): return False
-		if(ct.is_in_vision(loc) and ct.get_tile_builder_bot_id(loc) != None):
-			return False
-		return self.mapInfos[loc.x][loc.y] == EntityType.CORE or self.mapInfos[loc.x][loc.y] == EntityType.ROAD or self.mapInfos[loc.x][loc.y] == Environment.EMPTY  or self.mapInfos[loc.x][loc.y] == EntityType.CONVEYOR or self.mapInfos[loc.x][loc.y] == EntityType.BRIDGE
+		if(ct.is_in_vision(loc)):
+			bid =  ct.get_tile_builder_bot_id(loc)
+			if(bid != None and bid != ct.get_id()):
+				return False
+		return self.mapInfos[loc.x][loc.y] in Ore_Env or  self.mapInfos[loc.x][loc.y] == EntityType.MARKER or self.mapInfos[loc.x][loc.y] == EntityType.CORE or self.mapInfos[loc.x][loc.y] == EntityType.ROAD or self.mapInfos[loc.x][loc.y] == Environment.EMPTY  or self.mapInfos[loc.x][loc.y] == EntityType.CONVEYOR or self.mapInfos[loc.x][loc.y] == EntityType.BRIDGE
 
 
 	def tooCloseToDanger(self, ct, loc):
-		return False
+		out = loc in self.dangerous_tiles
+		return out
 
 	def onTheMap(self, ct, loc):
 		return (0 <= loc.x and loc.x < ct.get_map_width()) and (0 <= loc.y and loc.y < ct.get_map_height())
@@ -171,13 +193,13 @@ class BugNav:
 			return False
 		targetInfo = self.mapInfos[target.x][target.y]
 
-		if(targetInfo == None or targetInfo == Environment.WALL or targetInfo == EntityType.BARRIER or targetInfo == EntityType.HARVESTER or targetInfo == "ECORE"):
+		if(targetInfo != None and (targetInfo in Turret_Type or targetInfo == Environment.WALL or targetInfo == EntityType.BARRIER or targetInfo == EntityType.HARVESTER or targetInfo == "ECORE")):
 			
 			return False
 		checkLoc = loc
 		while(not checkLoc == target):
 			info = self.mapInfos[checkLoc.x][checkLoc.y]
-			if(not self.onTheMap(ct, checkLoc) or (info == None or self.mapInfos[checkLoc.x][checkLoc.y] == Environment.WALL or self.mapInfos[checkLoc.x][checkLoc.y] == EntityType.BARRIER)):
+			if(not self.onTheMap(ct, checkLoc) or (info != None and (self.mapInfos[checkLoc.x][checkLoc.y] in Turret_Type or targetInfo == EntityType.HARVESTER or   self.mapInfos[checkLoc.x][checkLoc.y] == Environment.WALL or self.mapInfos[checkLoc.x][checkLoc.y] == EntityType.BARRIER))):
 				return False
 			checkLoc = checkLoc.add(checkLoc.direction_to(target))
 		return True
@@ -194,13 +216,12 @@ class BugNav:
 		score = 0
 		info = self.mapInfos[loc.x][loc.y]
 		if(self.tooCloseToDanger(ct, loc)):
-			score -= 20
+			score -= 12
 		# if(mapData.enemyDefenseTowers.size != 0):
 		# 	for enemyTower in mapData.enemyDefenseTowers.getArray():
 		# 		if(enemyTower.location.distance_squared_to(loc) <= enemyTower.type.action_radius_squared):
 		# 			score -= 10000
 					# break
-
 		if(info == EntityType.CORE or info == EntityType.CONVEYOR  or info == EntityType.ROAD):
 			if(ct.get_team(ct.get_tile_building_id(loc))  == ct.get_team()):
 				score += allyScore
@@ -225,7 +246,7 @@ class BugNav:
 		if(info == Environment.EMPTY):
 			score += emptyScore
 		if(info == Environment.ORE_AXIONITE or info == Environment.ORE_TITANIUM):
-			score -= 50
+			score += emptyScore
 			# score += emptyScore
 			# if(not allyBehind): score -= 2
 		# allyBehind = False
@@ -295,6 +316,15 @@ class BugNav:
 			return Direction.EAST if dx > 0 else Direction.WEST
 		else:
 			return Direction.SOUTH if dy > 0 else Direction.NORTH
+
+	def safeFuzzyMove(self, ct, dir):
+		for d in self.fuzzyDirs(dir):
+			if(ct.can_move(d) and not self.tooCloseToDanger(ct, ct.get_position().add(d))):
+				ct.move(d)
+				return
+		self.fuzzyMove(ct, dir)
+
+
 
 	def fuzzyMove(self,ct, dir):
 		for d in self.fuzzyDirs(dir):
@@ -378,6 +408,8 @@ class BugNav:
 			score2 = self.tileScore(ct, ct.get_position().add(dirToTarget.rotate_left()), allyScore, enemyScore, emptyScore)
 			score3 = self.tileScore(ct, ct.get_position().add(dirToTarget.rotate_right()),  allyScore, enemyScore, emptyScore)
 
+
+
 			if(zigzag):
 				if(self.dir_order.index(dirToTarget) % 2 == 0 and ct.get_position().distance_squared(loc) > 50):
 					if(ct.get_current_round()%4 < 2):
@@ -394,9 +426,21 @@ class BugNav:
 				bestDir = dirToTarget.rotate_right()
 				bestScore = score3
 
+			
+
 
 
 			if(bestDir is not None and bestScore > -20):
+				nextPos = ct.get_position().add(bestDir)
+
+				bid = ct.get_tile_building_id(nextPos)
+				bteam = ct.get_team(bid)
+				btype = ct.get_entity_type(bid)
+
+				if(btype == EntityType.MARKER):
+					if(ct.can_destroy(nextPos)):
+						ct.destroy(nextPos)
+
 				if(ct.can_build_road(ct.get_position().add(bestDir))):
 					ct.build_road(ct.get_position().add(bestDir))
 
@@ -418,9 +462,10 @@ class BugNav:
 			self.bugStackIndex += 1
 
 		if(self.RIGHT):
+			print("RIGHTING")
 			dir = self.bugStack[self.bugStackIndex-1].rotate_right()
 			for i in range(8):
-				if(not self.canMove(ct, ct.get_position().add(dir)) or self.tooCloseToDanger(ct, ct.get_position().add(dir)) ):
+				if(not self.canMove(ct, ct.get_position().add(dir))  ):
 					if(not self.onTheMap(ct, ct.get_position().add(dir))):
 						self.bugStack = [None] * self.MAX_STACK_SIZE
 						self.bugStackIndex = 0
@@ -440,9 +485,10 @@ class BugNav:
 						return
 				dir = dir.rotate_right()
 		else:
+
 			dir = self.bugStack[self.bugStackIndex-1].rotate_left()
 			for i in range(8):
-				if(not self.canMove(ct, ct.get_position().add(dir)) or self.tooCloseToDanger(ct, ct.get_position().add(dir)) ):
+				if(not self.canMove(ct, ct.get_position().add(dir))  ):
 					if(not self.onTheMap(ct, ct.get_position().add(dir))):
 						self.bugStack = [None] * self.MAX_STACK_SIZE
 						self.bugStackIndex = 0
