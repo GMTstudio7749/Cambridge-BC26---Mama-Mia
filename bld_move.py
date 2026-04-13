@@ -151,7 +151,8 @@ class BugNav:
 				btype = ct.get_entity_type(bid)
 				if(btype == EntityType.CORE and bteam != ct.get_team()):
 					self.mapInfos[pos.x][pos.y] = "ECORE"
-
+				elif(btype == EntityType.BARRIER and bteam != ct.get_team()):
+					self.mapInfos[pos.x][pos.y] = "EBarrier"
 				else:
 					self.mapInfos[pos.x][pos.y] = ct.get_entity_type(bid)
 				if(btype in Turret_Type and bteam != ct.get_team()):
@@ -193,13 +194,12 @@ class BugNav:
 			return False
 		targetInfo = self.mapInfos[target.x][target.y]
 
-		if(targetInfo != None and (targetInfo in Turret_Type or targetInfo == Environment.WALL or targetInfo == EntityType.BARRIER or targetInfo == EntityType.HARVESTER or targetInfo == "ECORE")):
-			
+		if(targetInfo != None and (targetInfo in Turret_Type or targetInfo == Environment.WALL or targetInfo == "EBarrier" or targetInfo == EntityType.BARRIER or targetInfo == EntityType.HARVESTER or targetInfo == "ECORE")):
 			return False
 		checkLoc = loc
 		while(not checkLoc == target):
 			info = self.mapInfos[checkLoc.x][checkLoc.y]
-			if(not self.onTheMap(ct, checkLoc) or (info != None and (self.mapInfos[checkLoc.x][checkLoc.y] in Turret_Type or targetInfo == EntityType.HARVESTER or   self.mapInfos[checkLoc.x][checkLoc.y] == Environment.WALL or self.mapInfos[checkLoc.x][checkLoc.y] == EntityType.BARRIER))):
+			if(not self.onTheMap(ct, checkLoc) or (info != None and (self.mapInfos[checkLoc.x][checkLoc.y] in Turret_Type or targetInfo == EntityType.HARVESTER or   self.mapInfos[checkLoc.x][checkLoc.y] == Environment.WALL or self.mapInfos[checkLoc.x][checkLoc.y] == "EBarrier" or targetInfo == EntityType.BARRIER))):
 				return False
 			checkLoc = checkLoc.add(checkLoc.direction_to(target))
 		return True
@@ -216,7 +216,7 @@ class BugNav:
 		score = 0
 		info = self.mapInfos[loc.x][loc.y]
 		if(self.tooCloseToDanger(ct, loc)):
-			score -= 12
+			score -= 30
 		# if(mapData.enemyDefenseTowers.size != 0):
 		# 	for enemyTower in mapData.enemyDefenseTowers.getArray():
 		# 		if(enemyTower.location.distance_squared_to(loc) <= enemyTower.type.action_radius_squared):
@@ -243,6 +243,8 @@ class BugNav:
 		# 	allyBehind = (self.onTheMap(loc1) and mapData.getMapInfo(loc1).get_paint().is_ally() or
 		# 		(self.onTheMap(loc2) and mapData.getMapInfo(loc2).get_paint().is_ally()) or
 		# 		(self.onTheMap(loc3) and mapData.getMapInfo(loc3).get_paint().is_ally()))
+		if(info == EntityType.BARRIER):
+			score -= 10
 		if(info == Environment.EMPTY):
 			score += emptyScore
 		if(info == Environment.ORE_AXIONITE or info == Environment.ORE_TITANIUM):
@@ -993,3 +995,7 @@ class BugNav:
 			return "STUCK"
 bugnav = BugNav()
 explore = Explore()
+
+
+
+
