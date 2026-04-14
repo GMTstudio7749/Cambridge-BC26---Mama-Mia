@@ -6,7 +6,8 @@ class Turret():
 		self.my_pos = Position(-1, -1)
 		self.my_type = EntityType
 		self.MY_TEAM = Team
-
+		self.enemy_core_pos = Position(-1, -1)
+		
 		# Information
 		self.nearby_entity = []
 
@@ -15,6 +16,14 @@ class Turret():
 		self.my_pos = ct.get_position()
 		self.my_type = ct.get_entity_type()
 		self.MY_TEAM = ct.get_team()
+
+		for bid in ct.get_nearby_buildings():
+			pos = ct.get_position(bid)
+			btype = ct.get_entity_type(bid)
+			bteam = ct.get_team(bid)
+
+			if(btype == EntityType.CORE and bteam != ct.get_team()):
+				self.enemy_core_pos = pos
 
 	def TURRET_update(self, ct: Controller):
 		"""Turret update info about vision entity,..."""
@@ -28,6 +37,97 @@ class Turret():
 			self.SENTINEL_run(ct)
 		if self.my_type == EntityType.GUNNER:
 			self.GUNNER_run(ct)
+		if(self.my_type == EntityType.LAUNCHER):
+			self.LAUNCHER_run(ct)
+
+	def onTheMap(self, ct, loc):
+		return (0 <= loc.x and loc.x < ct.get_map_width()) and (0 <= loc.y and loc.y < ct.get_map_height())
+
+
+	def is_tile_passable(self, ct, pos):
+		bbid = ct.get_tile_builder_bot_id(pos)
+		if(bbid != None):
+			return False
+		
+		bid = ct.get_tile_building_id(pos)
+		btype = ct.get_entity_type(bid)
+		bteam = ct.get_team(bid)
+
+		if((btype == EntityType.CORE and bteam != ct.get_team()) or btype == EntityType.CONVEYOR or btype == EntityType.ROAD or btype == EntityType.BRIDGE):
+			return True
+		return False
+
+	def FIND_best_launch_pos(self, ct: Controller):
+		bestScore = -10**9
+		bestPos = None
+
+		myPos = ct.get_position()
+
+		tiles = ct.get_nearby_tiles()
+
+		for pos in tiles:
+			if pos == myPos:
+				continue
+
+			if not self.is_tile_passable(ct, pos):
+				continue
+
+			dist = myPos.distance_squared(pos) ** 0.5
+			score = dist 
+
+			bid = ct.get_tile_building_id(pos)
+			bteam = ct.get_team(bid)
+			if bid is not None:
+				btype = ct.get_entity_type(bid)
+
+				if btype == EntityType.ROAD:
+					score += 50 
+				elif btype == EntityType.CONVEYOR:
+					score += 20
+				elif btype == EntityType.BRIDGE:
+					score += 10
+				elif btype == EntityType.CORE and bteam != ct.get_team():
+					score += 100
+
+			if not self.is_tile_passable(ct, pos):
+				score -= 1000
+
+			if score > bestScore:
+				bestScore = score
+				bestPos = pos
+
+		return bestPos
+
+	def LAUNCHER_run(self, ct):
+		niceTarget = self.FIND_best_launch_pos(ct)
+		# ct.draw_indicator_line(niceTarget, ct.get_position(), 255, 255, 0)
+		for i in Dirs:
+			pos = ct.get_position().add(i)
+			if(not self.onTheMap(ct, pos)):
+				continue
+			bbid = ct.get_tile_builder_bot_id(pos)
+			bbteam = ct.get_team(bbid)
+
+			if(bbid != None and bbteam != ct.get_team()):
+				if(ct.can_launch(pos, niceTarget)):
+					ct.launch(pos, niceTarget)
+					return
+
+		for i in Dirs:
+			pos = ct.get_position().add(i)
+			if(not self.onTheMap(ct, pos)):
+				continue
+			bbid = ct.get_tile_builder_bot_id(pos)
+			bbteam = ct.get_team(bbid)
+
+			bid = ct.get_tile_building_id(pos)
+			btype = ct.get_entity_type(bid)
+			bteam = ct.get_team(bid)
+
+			if(bbid != None and bbteam != ct.get_team()):
+				if(ct.can_launch(pos, niceTarget)):
+					ct.launch(pos, niceTarget)
+					return
 	
 	def GUNNER_run(self, ct):
 		if ct.get_action_cooldown() != 0:

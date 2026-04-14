@@ -199,7 +199,7 @@ class BugNav:
 		checkLoc = loc
 		while(not checkLoc == target):
 			info = self.mapInfos[checkLoc.x][checkLoc.y]
-			if(not self.onTheMap(ct, checkLoc) or (info != None and (self.mapInfos[checkLoc.x][checkLoc.y] in Turret_Type or targetInfo == EntityType.HARVESTER or   self.mapInfos[checkLoc.x][checkLoc.y] == Environment.WALL or self.mapInfos[checkLoc.x][checkLoc.y] == "EBarrier" or targetInfo == EntityType.BARRIER))):
+			if(not self.onTheMap(ct, checkLoc) or (info != None and (self.mapInfos[checkLoc.x][checkLoc.y] in Turret_Type or info == EntityType.HARVESTER or info == "ECORE" or   self.mapInfos[checkLoc.x][checkLoc.y] == Environment.WALL or self.mapInfos[checkLoc.x][checkLoc.y] == "EBarrier" or info == EntityType.BARRIER))):
 				return False
 			checkLoc = checkLoc.add(checkLoc.direction_to(target))
 		return True

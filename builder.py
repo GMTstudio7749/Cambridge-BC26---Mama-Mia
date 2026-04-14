@@ -28,6 +28,8 @@ class Builder:
         ctx.Convey_Cost, tmp = ct.get_conveyor_cost()
         ctx.Gunner_Cost, tmp = ct.get_gunner_cost()
         ctx.Road_Cost, tmp = ct.get_road_cost()
+        ctx.Barrier_Cost, tmp = ct.get_barrier_cost()
+
         ctx.Spawn_Limit = (
             50*ctx.Road_Cost +
             7*ctx.Convey_Cost +

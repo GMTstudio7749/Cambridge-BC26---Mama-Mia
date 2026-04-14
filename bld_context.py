@@ -25,6 +25,7 @@ class BldContext:
         # COST
         self.Builder_Cost = -1
         self.Harvest_Cost = -1
+        self.Barrier_Cost = -1
         self.Convey_Cost = -1
         self.Gunner_Cost = -1
         self.Road_Cost = -1

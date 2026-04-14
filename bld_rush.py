@@ -138,6 +138,8 @@ class BldRush():
         if(bid == None):
             return 1, "PLACE_TURRET"
         if(bteam == ct.get_team()):
+            if(btype in Turret_Type):
+                return 1, ATTACK_TYPE.DONE 
             return 1, ATTACK_TYPE.PLACE_TURRET
         if(btype == EntityType.CONVEYOR or btype == EntityType.BRIDGE):
             score = 20
@@ -153,7 +155,7 @@ class BldRush():
             return 2, ATTACK_TYPE.PLACE_TURRET
         if(btype == EntityType.CORE):
             return 0, ATTACK_TYPE.NONE
-        return 0, ATTACK_TYPE.NONE
+        return 1, ATTACK_TYPE.NONE
 
     def RUSH_find_core(self, ct):
         explorePos = Position(-1, -1)
@@ -243,6 +245,53 @@ class BldRush():
             if(self.attackables[self.target_attackable.x][self.target_attackable.y].type == ATTACK_TYPE.NORMAL):
                 self.state = "ATTACK_TARGET_NORMAL"
 
+
+    def BUILD_defend_launcher(self, ct, loc):
+        if(ct.get_action_cooldown() > 0):
+            return True
+
+        for dir in All_Dirs:
+            pos = loc.add(dir)
+            if(not ct.is_in_vision(pos) or not ctx.explore.IS_in_map(pos.x, pos.y)):
+                continue
+
+            botid = ct.get_tile_builder_bot_id(pos)
+            botTeam = ct.get_team(botid)
+            if(botid == None or botTeam == ct.get_team()):
+                continue
+            gotLauncher = False
+            for i in Dirs:
+
+
+                launcherPos = pos.add(i)
+                if(not ct.is_in_vision(launcherPos) or not ctx.explore.IS_in_map(launcherPos.x, launcherPos.y)):
+                    continue
+                bid = ct.get_tile_building_id(launcherPos)
+                btype = ct.get_entity_type(bid)
+                bteam = ct.get_team(bid)
+                if(bid != None and btype == EntityType.LAUNCHER and bteam == ct.get_team()):
+                    gotLauncher = True
+            if(gotLauncher):
+                continue
+            for i in Dirs:
+                launcherPos = pos.add(i)
+                if(not ct.is_in_vision(launcherPos)  or not ctx.explore.IS_in_map(launcherPos.x, launcherPos.y)):
+                    continue
+                bid = ct.get_tile_building_id(launcherPos)
+                btype = ct.get_entity_type(bid)
+                bteam = ct.get_team(bid)
+                
+                if(btype == EntityType.ROAD and bteam == ct.get_team()):
+                    if(ct.can_destroy(launcherPos)):
+                        ct.destroy(launcherPos)
+                    
+                if(ct.can_build_launcher(launcherPos)):
+                    ct.build_launcher(launcherPos)
+                    return True
+            return False
+        return True
+            
+
     def RUSH_attack_target_normal(self, ct):
         if(self.attackables[self.target_attackable.x][self.target_attackable.y].type == ATTACK_TYPE.NORMAL):
             if(self.MODE == "HARASS" or self.MODE == "TRACE"):
@@ -250,53 +299,93 @@ class BldRush():
             else:
                 self.attackables[self.target_attackable.x][self.target_attackable.y].ignore = 10
 
-        if(ct.is_in_vision(self.attackables[self.target_attackable.x][self.target_attackable.y].pos)):
-            if(ctx.bugnav.tooCloseToDanger(ct, self.attackables[self.target_attackable.x][self.target_attackable.y].pos)):
-                ctx.bugnav.safeFuzzyMove(ct, self.attackables[self.target_attackable.x][self.target_attackable.y].pos.direction_to(ct.get_position()).opposite())
+        if(ct.is_in_vision(self.target_attackable)):
+            if(ctx.bugnav.tooCloseToDanger(ct, self.target_attackable)):
+                ctx.bugnav.safeFuzzyMove(ct, self.target_attackable.direction_to(ct.get_position()).opposite())
                 self.state = "ATTACK"
                 return
-            # print(self.GOT_nearby_working_bot(ct, self.attackables[self.target_attackable.x][self.target_attackable.y].pos))
-            if((self.MODE == "HARASS" or self.MODE == "TRACE") and self.GOT_nearby_working_bot(ct, self.attackables[self.target_attackable.x][self.target_attackable.y].pos) > 0):
-                self.attack_turn_count -= 10
+            # print(self.GOT_nearby_working_bot(ct, self.target_attackable))
+            if((self.MODE == "HARASS" or self.MODE == "TRACE") and self.GOT_nearby_working_bot(ct, self.target_attackable) > 0):
+                if(self.BUILD_defend_launcher(ct, self.target_attackable)):
+                    pass
+                else:
+                    self.attack_turn_count -= 5
 
-            bid = ct.get_tile_building_id(self.attackables[self.target_attackable.x][self.target_attackable.y].pos)
+            bid = ct.get_tile_building_id(self.target_attackable)
             btype = ct.get_entity_type(bid)
             bteam = ct.get_team(bid)
 
+            if(bid != None and bteam == ct.get_team()):
+                self.state = "ATTACK"
+                return
+
             if(bid == None):
-                if(self.attackables[self.target_attackable.x][self.target_attackable.y].pos.distance_squared(ct.get_position()) == 0):
+                if(self.target_attackable == ct.get_position()):
                     for dir in Dirs:
                         if(ct.can_move(dir)):
                             ct.move(dir)
                             break
             
-            gunnerDir = self.attackables[self.target_attackable.x][self.target_attackable.y].pos.direction_to(self.enemy_core_pos)
-            if(ct.can_build_gunner(self.attackables[self.target_attackable.x][self.target_attackable.y].pos, gunnerDir)):
-                ct.build_gunner(self.attackables[self.target_attackable.x][self.target_attackable.y].pos, gunnerDir)
+            if(self.target_attackable.x - self.enemy_core_pos.x < 4 and self.target_attackable.y - self.enemy_core_pos.y < 4):
+                gunnerDir = self.target_attackable.direction_to(self.enemy_core_pos)
+                if(ct.can_build_gunner(self.target_attackable, gunnerDir)):
+                    ct.build_gunner(self.target_attackable, gunnerDir)
+                    self.state = "ATTACK"
+                    return 
+            if(ct.can_build_barrier(self.target_attackable)):
+                ct.build_barrier(self.target_attackable)
+                self.state = "ATTTACK"
+                return
+            conDir = Direction.SOUTH
+            if(self.enemy_core_pos != Position(-1, -1)):
+                conDir = self.enemy_core_pos.direction_to(self.target_attackable)
+            if(ct.can_build_conveyor(self.target_attackable, conDir)):
+                ct.build_conveyor(self.target_attackable, conDir)
                 self.state = "ATTACK"
                 return
 
-            if(bteam == ct.get_team() and btype == EntityType.GUNNER):
-                self.state = "ATTACK"
-                return
+ 
+
+
+
             
             if(self.MODE == "NORMAL"):
                 nextPos = Position(-1, -1)
                 if(btype == EntityType.CONVEYOR):
-                    nextPos = self.attackables[self.target_attackable.x][self.target_attackable.y].pos.add(ct.get_direction(bid))
+                    nextPos = self.target_attackable.add(ct.get_direction(bid))
                 elif(btype == EntityType.BRIDGE):
                     nextPos = ct.get_bridge_target(bid)
-                if(self.attackables[nextPos.x][nextPos.y].ignore > 0):
+                if(self.attackables[nextPos.x][nextPos.y].type == ATTACK_TYPE.DONE):
                     self.state = "ATTACK"
                     return
-                if(nextPos != Position(-1, -1) and self.attackables[nextPos.x][nextPos.y].score > 0):
+
+                if(nextPos != Position(-1, -1) and self.attackables[nextPos.x][nextPos.y].score > 0 and  self.attackables[nextPos.x][nextPos.y].ignore < 5):
+                    self.target_attackable = nextPos
+                    self.attack_turn_count = MAX_ATTACK_TURN_COUNT
+            elif(self.MODE == "TRACE"):
+                nextPos = Position(-1, -1)
+                for bid in ct.get_nearby_buildings():
+                    pos = ct.get_position(bid)
+                    btype = ct.get_entity_type(bid)
+                    if(btype == EntityType.CONVEYOR):
+                        if(pos.add(ct.get_direction(bid)) == self.target_attackable):
+                            nextPos = pos
+                            break
+                    if(btype == EntityType.BRIDGE):
+                        if(ct.get_bridge_target(bid) == self.target_attackable):
+                            nextPos = pos
+                            break
+
+
+                if(nextPos != Position(-1, -1) and self.attackables[nextPos.x][nextPos.y].score > 0 and  self.attackables[nextPos.x][nextPos.y].ignore < 5):
                     self.target_attackable = nextPos
                     self.attack_turn_count = MAX_ATTACK_TURN_COUNT
             else:
                 currentConnects = []
                 current = self.target_attackable
-
-                while(True):
+                max_stack = 20
+                while(max_stack >= 0):
+                    max_stack -= 1
                     if(not ct.is_in_vision(current)):
                         break
                     bid = ct.get_tile_building_id(current)
@@ -319,8 +408,8 @@ class BldRush():
                     
                     currentConnects.append(nextPos)
 
-            if(ct.can_destroy(self.attackables[self.target_attackable.x][self.target_attackable.y].pos)):
-                ct.destroy(self.attackables[self.target_attackable.x][self.target_attackable.y].pos)
+            if(ct.can_destroy(self.target_attackable)):
+                ct.destroy(self.target_attackable)
 
             # if(ct.get_position() == self.target_attackable):
             #     for dir in Dirs:
@@ -333,11 +422,11 @@ class BldRush():
             #                 ct.destroy(pos)
             #             if(ct.can_build_barrier(pos)):
             #                 ct.build_barrier(pos)
-            if(ct.can_fire(self.attackables[self.target_attackable.x][self.target_attackable.y].pos)):
-                ct.fire(self.attackables[self.target_attackable.x][self.target_attackable.y].pos)
+            if(ct.can_fire(self.target_attackable)):
+                ct.fire(self.target_attackable)
         else:
             self.attack_turn_count = MAX_ATTACK_TURN_COUNT
-        ctx.bugnav.MOVE_to_target(ct, self.attackables[self.target_attackable.x][self.target_attackable.y].pos, False, 0, 2, 2)
+        ctx.bugnav.MOVE_to_target(ct, self.target_attackable, False, 0, 2, 2)
 
 
 
@@ -434,23 +523,56 @@ class BldRush():
             
             
 
-        self.invariant_action(ct)
+        self.RUSH_invariant_action(ct)
 
-    def invariant_action(self, ct):
-
-
-        if(self.enemy_core_pos != Position(-1, -1) and ct.get_position().distance_squared(self.enemy_core_pos) < 20):
-            pos = ctx.bugnav.lastLocation
-            bid = ct.get_tile_building_id(pos)
-            bteam = ct.get_team(bid)
-            btype = ct.get_entity_type(bid)
+    def RUSH_invariant_action(self, ct):
 
 
-        if(self.MODE == "HARASS" or self.MODE == "TRACE"):
-            bid = ct.get_tile_building_id(ct.get_position())
-            btype = ct.get_entity_type(bid)
-            bteam = ct.get_team(bid)
+        if(self.enemy_core_pos != Position(-1, -1)):
+            if(ct.get_position().distance_squared(self.enemy_core_pos) < 8):
+                for dir in All_Dirs:
+                    if(ctx.Glob_Tit < ctx.Convey_Cost):
+                        break
+                    pos = ct.get_position().add(dir)
+                    if(not ctx.explore.IS_in_map(pos.x, pos.y)):
+                        continue
+                    bid = ct.get_tile_building_id(pos)
+                    btype = ct.get_entity_type(bid)
+                    bteam = ct.get_team(bid)
+                    if((bteam == ct.get_team() and btype == EntityType.ROAD) or btype == EntityType.MARKER):
+                        if(ct.can_destroy(pos)):
+                            ct.destroy(pos)
+                    gotLauncher = False
+                    for i in Dirs:
+                        loc = pos.add(i)
+                        if(not ctx.explore.IS_in_map(loc.x, loc.y)):
+                            continue
+                        # ct.draw_indicator_line(loc, pos, 255, 255, 255)
+                        bid = ct.get_tile_building_id(loc)
+                        btype = ct.get_entity_type(bid)
+                        bteam = ct.get_team(bid)
+                        if(bteam == ct.get_team() and btype == EntityType.LAUNCHER):
+                            gotLauncher = True
 
-            if(bteam != ct.get_team()):
-                if(ct.can_fire(ct.get_position())):
-                    ct.fire(ct.get_position())
+                    if(not gotLauncher):
+                        if(ct.can_build_launcher(pos)):
+                            ct.build_launcher(pos)
+                            break
+
+                    if(ct.can_build_barrier(pos)):
+                        ct.build_barrier(pos)
+                        break
+                    conDir = Direction.SOUTH
+                    if(self.enemy_core_pos != Position(-1, -1)):
+                        conDir = self.enemy_core_pos.direction_to(self.target_attackable)
+                    if(ct.can_build_conveyor(pos, conDir)):
+                        ct.build_conveyor(pos, conDir)
+                        break
+
+        bid = ct.get_tile_building_id(ct.get_position())
+        btype = ct.get_entity_type(bid)
+        bteam = ct.get_team(bid)
+        if(bteam != ct.get_team()):
+            if(ct.can_fire(ct.get_position())):
+                ct.fire(ct.get_position())
+
