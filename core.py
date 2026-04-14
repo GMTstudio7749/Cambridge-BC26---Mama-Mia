@@ -140,6 +140,5 @@ class Core:
                 self.state = "EXPANDING"
 
         if self.state == "EXPANDING":
-            # self.CORE_expanding(ct)
-            pass
+            self.CORE_expanding(ct)
         

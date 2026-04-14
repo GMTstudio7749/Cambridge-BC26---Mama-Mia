@@ -32,7 +32,9 @@ class BldContext:
         self.Foundry_Cost = -1
         self.Convey_Cost = -1
         self.Gunner_Cost = -1
+        self.Launcher_Cost = -1
         self.Road_Cost = -1
+        self.Barrier_Cost = -1
         self.Spawn_Limit = -1
 
     #region ----- ORE scan func -----
@@ -114,7 +116,9 @@ class BldContext:
         ctx.Foundry_Cost, tmp = ct.get_foundry_cost()
         ctx.Convey_Cost, tmp = ct.get_conveyor_cost()
         ctx.Gunner_Cost, tmp = ct.get_gunner_cost()
+        ctx.Launcher_Cost, tmp = ct.get_launcher_cost()
         ctx.Road_Cost, tmp = ct.get_road_cost()
+        ctx.Barrier_Cost, tmp = ct.get_barrier_cost()
     #endregion
 
     #region ----- IS func -----
