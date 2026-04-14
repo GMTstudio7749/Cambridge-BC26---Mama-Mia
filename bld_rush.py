@@ -25,9 +25,12 @@ class BldRush():
         self.bots_pos = {}
         self.return_home = False
 
+
+        self.current_max_attack_turn_count = 0
+
     def RUSH_sense_nearby(self, ct):
         self.bots_pos = {}
-        spread = []
+        spread = [] 
         for bid in ct.get_nearby_units():
 
             i = ct.get_position(bid) 
@@ -41,6 +44,13 @@ class BldRush():
                     pass
                 else:
                     self.bots_pos[i] = 1
+            elif(self.MODE == "CONCENTRATE"):
+                if(bid == ct.get_id()):
+                    pass
+                else:
+                    self.bots_pos[i] = 2
+                    if(bteam == ct.get_team()):
+                        spread.append(i)
             else:
                 if(bid == ct.get_id()):
                     pass
@@ -84,8 +94,11 @@ class BldRush():
     def ATTACKABLE_update(self, ct: Controller):
         for i in range(len(self.attackables)):
             for j in range(len(self.attackables[i])):
-                if(self.attackables[i][j].ignore > 0):
-                    self.attackables[i][j].ignore -= 1
+                if(self.MODE == "CONCENTRATE"):
+                    self.attackables[i][j].ignore = 0
+                else:
+                    if(self.attackables[i][j].ignore > 0):
+                        self.attackables[i][j].ignore -= 1
 
         for tile_pos in ct.get_nearby_tiles():
             self.ATTACKABLE_status(ct, tile_pos)
@@ -111,7 +124,7 @@ class BldRush():
     def GOT_nearby_working_bot(self, ct, attackable_pos):
         if(not ct.is_in_vision(attackable_pos) or not ctx.explore.IS_in_map(attackable_pos.x, attackable_pos.y)):
             return 0
-        if(self.MODE == "HARASS" or self.MODE == "TRACE"):
+        if(self.MODE == "HARASS" or self.MODE == "TRACE" or self.MODE == "CONCENTRATE"):
             out = self.bots_pos.get(attackable_pos, 0)
             return out
 
@@ -129,7 +142,6 @@ class BldRush():
         bid = ct.get_tile_building_id(attackable_pos)
         btype = ct.get_entity_type(bid)
         bteam = ct.get_team(bid)
-        
 
         if(ctx.bugnav.tooCloseToDanger(ct, attackable_pos)):
             return 0, ATTACK_TYPE.NONE
@@ -143,7 +155,11 @@ class BldRush():
             return 1, ATTACK_TYPE.PLACE_TURRET
         if(btype == EntityType.CONVEYOR or btype == EntityType.BRIDGE):
             score = 20
-            score -= self.GOT_nearby_working_bot(ct, attackable_pos)
+            if(self.MODE == "CONCENTRATE"):
+                score += self.GOT_nearby_working_bot(ct, attackable_pos)
+            else:
+                score -= self.GOT_nearby_working_bot(ct, attackable_pos)
+
             score -= ct.get_position().distance_squared(attackable_pos) ** 0.5 * 0.1
             if(self.enemy_core_pos != Position(-1, -1)):
                 if(self.MODE == "TRACE"):
@@ -232,16 +248,15 @@ class BldRush():
 
             if(self.sym != None):
                 self.enemy_core_pos = self.explored_sym_loc[self.sym]
-                
             return
 
         self.target_attackable = self.GET_best_seen_attackable(ct)
         # for i in ct.get_nearby_tiles():
             # print(self.attackables[i.x][i.y].pos, self.attackables[i.x][i.y].score)
         if self.target_attackable == Position(-1, -1):
-            ctx.bugnav.MOVE_to_target(ct, self.enemy_core_pos, False)
+            ctx.bugnav.MOVE_to_target(ct, self.enemy_core_pos, False, 0, 0, 2)
         if(self.target_attackable != Position(-1, -1)):
-            self.attack_turn_count = MAX_ATTACK_TURN_COUNT
+            self.attack_turn_count = self.current_max_attack_turn_count
             if(self.attackables[self.target_attackable.x][self.target_attackable.y].type == ATTACK_TYPE.NORMAL):
                 self.state = "ATTACK_TARGET_NORMAL"
 
@@ -334,7 +349,7 @@ class BldRush():
                     return 
             if(ct.can_build_barrier(self.target_attackable)):
                 ct.build_barrier(self.target_attackable)
-                self.state = "ATTTACK"
+                self.state = "ATTACK"
                 return
             conDir = Direction.SOUTH
             if(self.enemy_core_pos != Position(-1, -1)):
@@ -343,8 +358,10 @@ class BldRush():
                 ct.build_conveyor(self.target_attackable, conDir)
                 self.state = "ATTACK"
                 return
-
- 
+            if(ct.can_build_road(self.target_attackable)):
+                ct.build_road(self.target_attackable)
+                self.state = "ATTACK"
+                return
 
 
 
@@ -361,7 +378,7 @@ class BldRush():
 
                 if(nextPos != Position(-1, -1) and self.attackables[nextPos.x][nextPos.y].score > 0 and  self.attackables[nextPos.x][nextPos.y].ignore < 5):
                     self.target_attackable = nextPos
-                    self.attack_turn_count = MAX_ATTACK_TURN_COUNT
+                    self.attack_turn_count = self.current_max_attack_turn_count
             elif(self.MODE == "TRACE"):
                 nextPos = Position(-1, -1)
                 for bid in ct.get_nearby_buildings():
@@ -379,7 +396,7 @@ class BldRush():
 
                 if(nextPos != Position(-1, -1) and self.attackables[nextPos.x][nextPos.y].score > 0 and  self.attackables[nextPos.x][nextPos.y].ignore < 5):
                     self.target_attackable = nextPos
-                    self.attack_turn_count = MAX_ATTACK_TURN_COUNT
+                    self.attack_turn_count = self.current_max_attack_turn_count
             else:
                 currentConnects = []
                 current = self.target_attackable
@@ -425,8 +442,15 @@ class BldRush():
             if(ct.can_fire(self.target_attackable)):
                 ct.fire(self.target_attackable)
         else:
-            self.attack_turn_count = MAX_ATTACK_TURN_COUNT
-        ctx.bugnav.MOVE_to_target(ct, self.target_attackable, False, 0, 2, 2)
+            self.attack_turn_count = self.current_max_attack_turn_count
+        
+        if(ct.get_position().distance_squared(self.target_attackable) <= 2):
+            moveDir = ct.get_position().direction_to(self.target_attackable)
+            if(ct.can_move(moveDir)):
+                ct.move(moveDir)
+
+        else:
+            ctx.bugnav.MOVE_to_target(ct, self.target_attackable, False, 0, 0, 2)
 
 
 
@@ -436,9 +460,10 @@ class BldRush():
     def RUSH_run(self, ct: Controller):
         """Main RUSH builder function"""
         print(self.MODE)
-        
+            
         if(ct.get_current_round() == 1):
             self.return_home = True
+
 
         if(not self.setup):
             if(ct.get_current_round() == 4):
@@ -512,6 +537,15 @@ class BldRush():
             if(ct.can_heal(ct.get_position())):
                 ct.heal(ct.get_position())
 
+        if(ct.get_current_round() > 0):
+            self.MODE = "CONCENTRATE"
+
+        if(self.MODE == "CONCENTRATE"):
+            self.current_max_attack_turn_count = MAX_ATTACK_TURN_COUNT_CONCENTRATE
+        else:
+            self.current_max_attack_turn_count = MAX_ATTACK_TURN_COUNT
+
+
         if(self.state == "FIND_CORE"):
             self.RUSH_find_core(ct)
         elif(self.state == "ATTACK"):
@@ -568,6 +602,23 @@ class BldRush():
                     if(ct.can_build_conveyor(pos, conDir)):
                         ct.build_conveyor(pos, conDir)
                         break
+
+        if(self.target_attackable != Position(-1, -1) and self.state == "ATTACK_TARGET_NORMAL" and self.MODE == "CONCENTRATE"):
+            if(ctx.Glob_Tit > ctx.Barrier_Cost):
+                
+                
+                if(self.target_attackable == ct.get_position()):
+                    for i in Dirs:
+                        loc = ct.get_position().add(i)
+                        bid = ct.get_tile_building_id(loc)
+                        btype = ct.get_entity_type(bid)
+                        bteam = ct.get_team(bid)
+                        if((bteam == ct.get_team() and btype == EntityType.ROAD) or btype == EntityType.MARKER):
+                            if(ct.can_destroy(loc)):
+                                ct.destroy(loc)
+                        if(ct.can_build_barrier(loc)):
+                            ct.build_barrier(loc)
+                
 
         bid = ct.get_tile_building_id(ct.get_position())
         btype = ct.get_entity_type(bid)

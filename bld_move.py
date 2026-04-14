@@ -198,8 +198,9 @@ class BugNav:
 			return False
 		checkLoc = loc
 		while(not checkLoc == target):
+			ct.draw_indicator_line(loc, target, 255, 255, 255)
 			info = self.mapInfos[checkLoc.x][checkLoc.y]
-			if(not self.onTheMap(ct, checkLoc) or (info != None and (self.mapInfos[checkLoc.x][checkLoc.y] in Turret_Type or info == EntityType.HARVESTER or info == "ECORE" or   self.mapInfos[checkLoc.x][checkLoc.y] == Environment.WALL or self.mapInfos[checkLoc.x][checkLoc.y] == "EBarrier" or info == EntityType.BARRIER))):
+			if(not self.onTheMap(ct, checkLoc) or (info != None and (self.mapInfos[checkLoc.x][checkLoc.y] in Turret_Type or info == EntityType.HARVESTER or info == "ECORE" or  info == Environment.WALL or info == "EBarrier" or info == EntityType.BARRIER))):
 				return False
 			checkLoc = checkLoc.add(checkLoc.direction_to(target))
 		return True
