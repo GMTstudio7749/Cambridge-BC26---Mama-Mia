@@ -3,6 +3,7 @@ from utils import *
 
 class Turret():
 	def __init__(self):
+		self.setup = False
 		self.my_pos = Position(-1, -1)
 		self.my_type : EntityType
 		self.MY_TEAM : Team
@@ -22,8 +23,15 @@ class Turret():
 
 	def TURRET_run(self, ct: Controller):
 		"""Main turret runner (all types)"""
+		# SETUP
+		if not self.setup:
+			self.TURRET_setup(ct)
+			self.setup = True
+		
+		# UPDATE
 		self.TURRET_update(ct)
 
+		# WORK
 		if self.my_type == EntityType.SENTINEL:
 			self.SENTINEL_run(ct)
 		if self.my_type == EntityType.LAUNCHER:
@@ -82,37 +90,43 @@ class Turret():
 
 	def LAUNCHER_run(self, ct : Controller) :
 		"""Main launcher runner"""
-		target = Position(-1,-1)
-		rotation : Direction
-		throw_dir : dict[Direction,tuple[int,Position]] = {}
-		for pos in self.targetable :
-			if ct.get_tile_builder_bot_id(pos) is not None :
-				candidates = ct.get_tile_builder_bot_id(pos)
-			else :
+		target = Position(-1, -1)
+		throw_dir: dict[Direction, tuple[int, Position]] = {}
+
+		for pos in self.targetable:
+			unit = ct.get_tile_builder_bot_id(pos)
+			if unit is None:
 				continue
-			if ct.get_entity_type(candidates) == EntityType.BUILDER_BOT and ct.get_team(candidates) != self.MY_TEAM :
-				target = ct.get_position(candidates)
-				rotation = self.my_pos.direction_to(target)
-		if target == Position(-1,-1) :
+
+			if ct.get_entity_type(unit) == EntityType.BUILDER_BOT and ct.get_team(unit) != self.MY_TEAM:
+				target = ct.get_position(unit)
+				break
+
+		if target == Position(-1, -1):
 			return
-		for candidates in ct.get_nearby_tiles() :
-			dir = self.my_pos.direction_to(candidates)
-			dist = self.my_pos.distance_squared(candidates)
-			if ct.can_launch(target,candidates) and throw_dir[dir][0] < dist :
-				throw_dir[dir] = (dist,candidates)
-		if rotation in throw_dir :
-			ct.launch(target,throw_dir[dir][1])
-		elif rotation.rotate_right() in throw_dir :
-			ct.launch(target,throw_dir[rotation.rotate_right()][1])
-		elif rotation.rotate_left() in throw_dir : 
-			ct.launch(target,throw_dir[rotation.rotate_left()][1])
-		elif rotation.rotate_right().rotate_right() in throw_dir :
-			ct.launch(target,throw_dir[rotation.rotate_right().rotate_right()][1])
-		elif rotation.rotate_left() in throw_dir : 
-			ct.launch(target,throw_dir[rotation.rotate_left().rotate_left()][1])
-		elif rotation.rotate_right().rotate_right().rotate_right() in throw_dir :
-			ct.launch(target,throw_dir[rotation.rotate_right().rotate_right().rotate_right()][1])
-		elif rotation.rotate_left() in throw_dir : 
-			ct.launch(target,throw_dir[rotation.rotate_left().rotate_left().rotate_left()][1])
-		elif rotation.rotate_left().rotate_left().rotate_left().rotate_left() in throw_dir :
-			ct.launch(target,throw_dir[rotation.rotate_left().rotate_left().rotate_left().rotate_left()][1])
+
+		rotation = self.my_pos.direction_to(target)
+
+		for tile in ct.get_nearby_tiles():
+			dir = self.my_pos.direction_to(tile)
+			dist = self.my_pos.distance_squared(tile)
+
+			if ct.can_launch(target, tile):
+				if dir not in throw_dir or throw_dir[dir][0] < dist:
+					throw_dir[dir] = (dist, tile)
+
+		check_dirs = [
+			rotation,
+			rotation.rotate_right(),
+			rotation.rotate_left(),
+			rotation.rotate_right().rotate_right(),
+			rotation.rotate_left().rotate_left(),
+			rotation.rotate_right().rotate_right().rotate_right(),
+			rotation.rotate_left().rotate_left().rotate_left(),
+			rotation.opposite()
+		]
+
+		for d in check_dirs:
+			if d in throw_dir:
+				ct.launch(target, throw_dir[d][1])
+				return

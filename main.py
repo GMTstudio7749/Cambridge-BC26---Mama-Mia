@@ -42,13 +42,13 @@ class Player:
 	#endregion
 
 	def run(self, ct: Controller):
-		self.start_time = time.perf_counter_ns()
 		my_type = ct.get_entity_type()
 		
 		if my_type == EntityType.CORE:
 			self.core_ctrl.CORE_run(ct)
 
 		elif my_type == EntityType.BUILDER_BOT:
+			self.start_time = time.perf_counter_ns()
 			self.builder_ctrl.BUILDER_run(ct)
 			self.DEBUG_time(ct)
 			

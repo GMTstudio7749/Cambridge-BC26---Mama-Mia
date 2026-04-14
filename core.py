@@ -8,6 +8,7 @@ class Core:
         self.my_pos = Position(-1, -1)
         self.state = "OPENING"
         self.builder_spawn = 0
+        self.Open_Idx = -1
         self.Cur_Round = -1
 
         # Opening 
@@ -16,7 +17,7 @@ class Core:
 
         # Expanding
         self.EXPAND_ROUND = 200
-        self.Spawn_Limit = -1
+        self.Spawn_Dir_Idx = 0
 
         # Resource
         self.Glob_Tit = -1
@@ -91,32 +92,33 @@ class Core:
     #region --- Core STATE ---
     def CORE_opening(self, ct: Controller):
         """Core function for opening state, return True if work finished"""
-        if self.builder_spawn >= MAX_BUILDER_OPENING:
-            return True
+        if self.builder_spawn >= OPENING_COUNT: return True
+
+        self.Open_Idx = (self.Open_Idx + 1) % OPENING_COUNT
+        type = OPENING[self.Open_Idx]
+        if type == "GUARD":
+            if self.CORE_spawn_builder(ct, self.Open_Guard_Dir):
+                self.Open_Guard_Dir = self.Open_Guard_Dir.rotate_right().rotate_right()
         
-        # GUARD
-        if self.builder_spawn >= MAX_BUILDER_OPENING - 2:
-            self.CORE_spawn_builder(ct, self.Open_Guard_Dir)
-            self.Open_Guard_Dir = self.Open_Guard_Dir.rotate_right().rotate_right()
-        # ECO
-        elif self.builder_spawn % 2 == 0:
-            self.CORE_spawn_builder(ct, self.Open_Eco_Dir)
-            self.Open_Eco_Dir = self.Open_Eco_Dir.rotate_right().rotate_right()
-        # RUSH - currently GUARD
-        else:
-            self.CORE_spawn_builder(ct, self.Open_Guard_Dir)
-            self.Open_Guard_Dir = self.Open_Guard_Dir.rotate_right().rotate_right()
+        elif type == "ECO":
+            if self.CORE_spawn_builder(ct, self.Open_Eco_Dir):
+                self.Open_Eco_Dir = self.Open_Eco_Dir.rotate_right().rotate_right()
+        
+        elif type == "RUSH":
+            self.CORE_spawn_builder(ct, Direction.CENTRE)
         return False
     
     def CORE_expanding(self, ct: Controller):
         """Core function for expanding state, return True if work finished"""
         if self.Cur_Round < self.EXPAND_ROUND: return False
         
-        '''if self.Cur_Round % 50 == 0:
-            if self.builder_spawn < MAX_BUILDER_COUNT:
-                if self.Glob_Tit > self.Builder_Cost + self.Spawn_Limit:
-                    self.CORE_spawn_builder(ct, self.open_spawn_dir)
-                    self.open_spawn_dir = self.open_spawn_dir.rotate_right().rotate_right()'''
+        if self.Cur_Round % 50 == 0:
+            if self.Glob_Tit > self.Builder_Cost + 300:
+                if ct.get_unit_count() < 20 and ct.get_unit_count() % 2 == 0:
+                    self.CORE_spawn_builder(ct, Direction.CENTRE)
+                else:
+                    self.CORE_spawn_builder(ct, Dirs[self.Spawn_Dir_Idx])
+                    self.Spawn_Dir_Idx = (self.Spawn_Dir_Idx + 3) % 8
         
         return False
 
@@ -138,6 +140,6 @@ class Core:
                 self.state = "EXPANDING"
 
         if self.state == "EXPANDING":
-            self.CORE_expanding(ct)
-
+            # self.CORE_expanding(ct)
+            pass
         
