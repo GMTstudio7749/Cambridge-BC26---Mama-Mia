@@ -34,7 +34,7 @@ class Player:
 		self.time_turn_cnt += 1
 		self.aver_time = self.sum_time / self.time_turn_cnt
 		print("\n====== TIME ======")
-		print(f"Curr: {milli:.2f} ms", "#"*round((milli*5)))
+		print(f"Curr: {milli:.2f} ms", "#"*round((milli*7)))
 		print(f"Aver: {self.aver_time:.2f} ms", "#"*round((self.aver_time*5)))
 		print(f"Peak: {self.peak_time:.2f} ms > Round: {self.peak_round}")
 		print("===================")
@@ -46,20 +46,11 @@ class Player:
 		my_type = ct.get_entity_type()
 		
 		if my_type == EntityType.CORE:
-			if not self.setup:
-				self.core_ctrl.CORE_setup(ct)
-				self.setup = True
 			self.core_ctrl.CORE_run(ct)
 
 		elif my_type == EntityType.BUILDER_BOT:
-			if not self.setup:
-				self.builder_ctrl.BUILDER_setup(ct)
-				self.setup = True
 			self.builder_ctrl.BUILDER_run(ct)
 			self.DEBUG_time(ct)
 			
 		elif my_type in TURRET_TYPE:
-			if not self.setup:
-				self.turret_ctrl.TURRET_setup(ct)
-				self.setup = True
 			self.turret_ctrl.TURRET_run(ct)

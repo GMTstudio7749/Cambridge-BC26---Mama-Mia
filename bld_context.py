@@ -15,6 +15,7 @@ class BldContext:
         self.MY_TEAM: Team
         self.CORE_POS = Position(-1, -1)
         self.CORE_ID: int
+        self.CORE_DIR: Direction
 
         # GLOBAL
         self.Cur_Round = -1
@@ -97,6 +98,24 @@ class BldContext:
             print(ore)
             print("---------------")
     #endregion
+    
+    #region ----- UPDATE func -----
+    def UPD_round_turn(self, ct: Controller):
+        """Update info about global round and local turn count"""
+        ctx.Cur_Round = ct.get_current_round()
+        ctx.Turn_Count = ctx.Turn_Count + 1
+
+    def UPD_resource_cost(self, ct: Controller):
+        """Builder update info about global values"""
+        ctx.Glob_Tit, ctx.Glob_Anx = ct.get_global_resources()
+
+        ctx.Builder_Cost, tmp = ct.get_builder_bot_cost()
+        ctx.Harvest_Cost, tmp = ct.get_harvester_cost()
+        ctx.Foundry_Cost, tmp = ct.get_foundry_cost()
+        ctx.Convey_Cost, tmp = ct.get_conveyor_cost()
+        ctx.Gunner_Cost, tmp = ct.get_gunner_cost()
+        ctx.Road_Cost, tmp = ct.get_road_cost()
+    #endregion
 
     #region ----- IS func -----
     def IS_in_map(self, pos: Position):
@@ -135,7 +154,7 @@ class BldContext:
     
     #endregion
 
-    #region --- CHECK func ---
+    #region ----- CHECK func -----
     def CHECK_harvester(self, ct: Controller, tile_pos: Position):
         """Check if a harvester is placed on a position\n
            If out of vision, return None"""
@@ -240,4 +259,17 @@ class BldContext:
         return False
     #endregion
     
+    #region ----- DEBUG func -----
+    def DEBUG_global_cost(self):
+        """Print current costs for debug purpose"""
+        print("\n== Global Cost ==")
+        print("Conveyor:", ctx.Convey_Cost)
+        print("Builder:", ctx.Builder_Cost)
+        print("Harvester:", ctx.Harvest_Cost)
+        print("Foundry:", ctx.Foundry_Cost)
+        print("Gunner:", ctx.Gunner_Cost)
+        print("Road:", ctx.Road_Cost)
+        print("===================\n")
+    #endregion
+
 ctx = BldContext()

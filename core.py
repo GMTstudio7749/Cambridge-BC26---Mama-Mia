@@ -4,6 +4,7 @@ from utils import *
 
 class Core:
     def __init__(self):
+        self.setup = False
         self.my_pos = Position(-1, -1)
         self.state = "OPENING"
         self.builder_spawn = 0
@@ -101,9 +102,10 @@ class Core:
         elif self.builder_spawn % 2 == 0:
             self.CORE_spawn_builder(ct, self.Open_Eco_Dir)
             self.Open_Eco_Dir = self.Open_Eco_Dir.rotate_right().rotate_right()
-        # RUSH
+        # RUSH - currently GUARD
         else:
-            self.CORE_spawn_builder(ct, Direction.CENTRE)
+            self.CORE_spawn_builder(ct, self.Open_Guard_Dir)
+            self.Open_Guard_Dir = self.Open_Guard_Dir.rotate_right().rotate_right()
         return False
     
     def CORE_expanding(self, ct: Controller):
@@ -122,8 +124,15 @@ class Core:
 
     def CORE_run(self, ct: Controller):
         """Main core runner"""
+        # SETUP
+        if not self.setup:
+            self.CORE_setup(ct)
+            self.setup = True
+        
+        # UPDATE
         self.CORE_update(ct)
 
+        # WORK
         if self.state == "OPENING":
             if self.CORE_opening(ct):
                 self.state = "EXPANDING"

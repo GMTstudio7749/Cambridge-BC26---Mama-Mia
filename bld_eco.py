@@ -252,8 +252,13 @@ class BldEco:
 
     def ECO_run(self, ct: Controller):
         """Main ECO builder function"""
+
+        # UPDATE
+        ctx.ORE_update(ct)
+        ctx.UPD_resource_cost(ct)
         self.ECO_update()
 
+        # WORK
         if self.state == "EXPLORE":
             self.ECO_explore(ct)
 
@@ -271,7 +276,8 @@ class BldEco:
             x = self.ECO_link_back_core(ct, self.start_building_pos)
             if x in ["DONE", "STUCK"]:
                 self.ECO_switch_explore(ct)
-
+        
+        # DEBUG
         self.ECO_debug(ct)
         # ctx.explore.EXPLORE_debug(ct)
         # ctx.ORE_debug()
