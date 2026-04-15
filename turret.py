@@ -4,12 +4,11 @@ from utils import *
 class Turret():
 	def __init__(self):
 		self.my_pos = Position(-1, -1)
-		self.my_type = EntityType
-		self.MY_TEAM = Team
-		self.enemy_core_pos = Position(-1, -1)
-		
+		self.my_type : EntityType
+		self.MY_TEAM : Team
+
 		# Information
-		self.nearby_entity = []
+		self.targetable = []
 
 	def TURRET_setup(self, ct: Controller):
 		"""Turret setup infos"""
@@ -17,17 +16,9 @@ class Turret():
 		self.my_type = ct.get_entity_type()
 		self.MY_TEAM = ct.get_team()
 
-		for bid in ct.get_nearby_buildings():
-			pos = ct.get_position(bid)
-			btype = ct.get_entity_type(bid)
-			bteam = ct.get_team(bid)
-
-			if(btype == EntityType.CORE and bteam != ct.get_team()):
-				self.enemy_core_pos = pos
-
 	def TURRET_update(self, ct: Controller):
 		"""Turret update info about vision entity,..."""
-		self.nearby_entity = ct.get_nearby_entities()
+		self.targetable = ct.get_attackable_tiles()
 
 	def TURRET_run(self, ct: Controller):
 		"""Main turret runner (all types)"""
@@ -35,172 +26,93 @@ class Turret():
 
 		if self.my_type == EntityType.SENTINEL:
 			self.SENTINEL_run(ct)
-		if self.my_type == EntityType.GUNNER:
-			self.GUNNER_run(ct)
-		if(self.my_type == EntityType.LAUNCHER):
+		if self.my_type == EntityType.LAUNCHER:
 			self.LAUNCHER_run(ct)
 
-	def onTheMap(self, ct, loc):
-		return (0 <= loc.x and loc.x < ct.get_map_width()) and (0 <= loc.y and loc.y < ct.get_map_height())
-
-
-	def is_tile_passable(self, ct, pos):
-		bbid = ct.get_tile_builder_bot_id(pos)
-		if(bbid != None):
-			return False
-		
-		bid = ct.get_tile_building_id(pos)
-		btype = ct.get_entity_type(bid)
-		bteam = ct.get_team(bid)
-
-		if((btype == EntityType.CORE and bteam != ct.get_team()) or btype == EntityType.CONVEYOR or btype == EntityType.ROAD or btype == EntityType.BRIDGE):
-			return True
-		return False
-
-	def FIND_best_launch_pos(self, ct: Controller):
-		bestScore = -10**9
-		bestPos = None
-
-		myPos = ct.get_position()
-
-		tiles = ct.get_nearby_tiles()
-
-		for pos in tiles:
-			if pos == myPos:
-				continue
-
-			if not self.is_tile_passable(ct, pos):
-				continue
-
-			dist = myPos.distance_squared(pos) ** 0.5
-			score = dist 
-
-			bid = ct.get_tile_building_id(pos)
-			bteam = ct.get_team(bid)
-			if bid is not None:
-				btype = ct.get_entity_type(bid)
-
-				if btype == EntityType.ROAD:
-					score += 50 
-				elif btype == EntityType.CONVEYOR:
-					score += 20
-				elif btype == EntityType.BRIDGE:
-					score += 10
-				elif btype == EntityType.CORE and bteam != ct.get_team():
-					score += 100
-
-			if not self.is_tile_passable(ct, pos):
-				score -= 1000
-
-			if score > bestScore:
-				bestScore = score
-				bestPos = pos
-
-		return bestPos
-
-	def LAUNCHER_run(self, ct):
-		niceTarget = self.FIND_best_launch_pos(ct)
-		# ct.draw_indicator_line(niceTarget, ct.get_position(), 255, 255, 0)
-		for i in Dirs:
-			pos = ct.get_position().add(i)
-			if(not self.onTheMap(ct, pos)):
-				continue
-			bbid = ct.get_tile_builder_bot_id(pos)
-			bbteam = ct.get_team(bbid)
-
-			if(bbid != None and bbteam != ct.get_team()):
-				if(ct.can_launch(pos, niceTarget)):
-					ct.launch(pos, niceTarget)
-					return
-
-		for i in Dirs:
-			pos = ct.get_position().add(i)
-			if(not self.onTheMap(ct, pos)):
-				continue
-			bbid = ct.get_tile_builder_bot_id(pos)
-			bbteam = ct.get_team(bbid)
-
-			bid = ct.get_tile_building_id(pos)
-			btype = ct.get_entity_type(bid)
-			bteam = ct.get_team(bid)
-
-			if(bbid != None and bbteam != ct.get_team()):
-				if(ct.can_launch(pos, niceTarget)):
-					ct.launch(pos, niceTarget)
-					return
-	
-	def GUNNER_run(self, ct):
-		if ct.get_action_cooldown() != 0:
-			return
-
-		my_team = ct.get_team()
-		target_pos = ct.get_gunner_target()
-
-		if target_pos is None:
-			return
-
-		if not ct.can_fire(target_pos):
-			return
-
-		building_id = ct.get_tile_building_id(target_pos)
-		building_type = ct.get_entity_type(building_id)
-		building_team = ct.get_team(building_id)
-		bot_id = ct.get_tile_builder_bot_id(target_pos)
-
-		if bot_id is not None:
-			if ct.get_team(bot_id) != my_team:
-				ct.fire(target_pos)
-			return
-		
-		if building_id is not None:
-			if(building_team != ct.get_team()):
-				ct.fire(target_pos)
-			else:
-				if(building_type == EntityType.ROAD):
-					ct.fire(target_pos)
-			return
-
-		ct.fire(target_pos)
-		
 	def SENTINEL_run(self, ct: Controller) :
 		"""Main sentinel runner"""
-		attack_pos = {}
-		point = 0
-		target_type = EntityType
-		for target in self.nearby_entity :
-			target_type = ct.get_entity_type(target)
-			if ct.get_team(target) != self.MY_TEAM and ct.can_fire(ct.get_position(target)) :
-				point = 0
+		enemy_turrets = [64,Position(-1,-1)]
+		enemy_builds = [64,Position(-1,-1)]
+		enemy_transports = [64,Position(-1,-1)]
+		enemy_core : Position
+		enemy_barriers = [64,Position(-1,-1)]
+		target_type : EntityType
+		target_hp : int
+		target_pos : Position
+		target : int | None
+		for pos in self.targetable :
+			if ct.get_tile_builder_bot_id(pos) is not None :
+				target = ct.get_tile_builder_bot_id(pos)
+			elif ct.get_tile_building_id(pos) is not None :
+				target = ct.get_tile_building_id(pos)
+			else :
+				continue
+			target_hp = ct.get_hp(target)
+			target_pos = ct.get_position(target)
+			if ct.get_team(target) != self.MY_TEAM and ct.can_fire(target_pos) :
+				target_type = ct.get_entity_type(target)
 				if target_type == EntityType.SENTINEL or target_type == EntityType.BREACH or target_type == EntityType.GUNNER or target_type == EntityType.LAUNCHER :
-					point = 16
+					if target_hp < enemy_turrets[0] :
+						enemy_turrets[0] = target_hp
+						enemy_turrets[1] = target_pos
 				elif target_type == EntityType.BUILDER_BOT or target_type == EntityType.FOUNDRY :
-					point = 8
+					if target_hp < enemy_builds[0] :
+						enemy_builds[0] = target_hp
+						enemy_builds[1] = target_pos
 				elif target_type == EntityType.CONVEYOR or target_type == EntityType.ARMOURED_CONVEYOR or target_type == EntityType.BRIDGE :
-					point = 4
+					if target_hp < enemy_transports[0] :
+						enemy_transports[0] = target_hp
+						enemy_transports[1] = target_pos
 				elif target_type == EntityType.CORE :
-					point = 2
-				else:
-					point = 1
-				attack_pos[ct.get_position(target)] += point
-			if ct.get_team(target) == self.MY_TEAM and ct.can_fire(ct.get_position(target)) :
-				point = 0
-				if target_type == EntityType.SENTINEL or target_type == EntityType.BREACH or target_type == EntityType.GUNNER or target_type == EntityType.LAUNCHER :
-					point = 16
-				elif target_type == EntityType.BUILDER_BOT or target_type == EntityType.FOUNDRY :
-					point = 8
-				elif target_type == EntityType.CONVEYOR or target_type == EntityType.ARMOURED_CONVEYOR or target_type == EntityType.BRIDGE :
-					point = 4
-				elif target_type == EntityType.CORE :
-					point = 2
-				else:
-					point = 1
-				attack_pos[ct.get_position(target)] -= point
-				
+					enemy_core = target_pos
+				elif target_type == EntityType.BARRIER :
+					if target_hp < enemy_barriers[0] :
+						enemy_barriers[0] = target_hp
+						enemy_barriers[1] = target_pos
+		if enemy_turrets[1] != Position(-1,-1):
+			ct.fire(enemy_turrets[1])
+		elif enemy_builds[1] != Position(-1,-1):
+			ct.fire(enemy_builds[1])
+		elif enemy_transports[1] != Position(-1,-1):
+			ct.fire(enemy_transports[1])
+		elif enemy_core != Position(-1,-1) :
+			ct.fire(enemy_core)
+		elif enemy_barriers[1] != Position(-1,-1):
+			ct.fire(enemy_barriers[1])
+
+	def LAUNCHER_run(self, ct : Controller) :
+		"""Main launcher runner"""
 		target = Position(-1,-1)
-		score = 0
-		for key,value in attack_pos.items():
-			if score > value:
-				target = key
-		if target != Position(-1,-1):
-			if ct.can_fire(target):
-				ct.fire(target)
+		rotation : Direction
+		throw_dir : dict[Direction,tuple[int,Position]] = {}
+		for pos in self.targetable :
+			if ct.get_tile_builder_bot_id(pos) is not None :
+				candidates = ct.get_tile_builder_bot_id(pos)
+			else :
+				continue
+			if ct.get_entity_type(candidates) == EntityType.BUILDER_BOT and ct.get_team(candidates) != self.MY_TEAM :
+				target = ct.get_position(candidates)
+				rotation = self.my_pos.direction_to(target)
+		if target == Position(-1,-1) :
+			return
+		for candidates in ct.get_nearby_tiles() :
+			dir = self.my_pos.direction_to(candidates)
+			dist = self.my_pos.distance_squared(candidates)
+			if ct.can_launch(target,candidates) and throw_dir[dir][0] < dist :
+				throw_dir[dir] = (dist,candidates)
+		if rotation in throw_dir :
+			ct.launch(target,throw_dir[dir][1])
+		elif rotation.rotate_right() in throw_dir :
+			ct.launch(target,throw_dir[rotation.rotate_right()][1])
+		elif rotation.rotate_left() in throw_dir : 
+			ct.launch(target,throw_dir[rotation.rotate_left()][1])
+		elif rotation.rotate_right().rotate_right() in throw_dir :
+			ct.launch(target,throw_dir[rotation.rotate_right().rotate_right()][1])
+		elif rotation.rotate_left() in throw_dir : 
+			ct.launch(target,throw_dir[rotation.rotate_left().rotate_left()][1])
+		elif rotation.rotate_right().rotate_right().rotate_right() in throw_dir :
+			ct.launch(target,throw_dir[rotation.rotate_right().rotate_right().rotate_right()][1])
+		elif rotation.rotate_left() in throw_dir : 
+			ct.launch(target,throw_dir[rotation.rotate_left().rotate_left().rotate_left()][1])
+		elif rotation.rotate_left().rotate_left().rotate_left().rotate_left() in throw_dir :
+			ct.launch(target,throw_dir[rotation.rotate_left().rotate_left().rotate_left().rotate_left()][1])

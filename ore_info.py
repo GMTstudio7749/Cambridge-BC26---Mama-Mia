@@ -5,10 +5,15 @@ class OreInfo:
     def __init__(self, pos, env):
         self.pos: Position = pos
         self.env: Environment = env
-        self.mark = 0
-        self.harv = False
-        self.barr = 0
-        self.ignore = 0
+
+        # Building on ore
+        self.mark: int = 0
+        self.harv: bool = False
+        self.barr: int = 0
+
+        # Ore status
+        self.ignore: int = 0
+        self.linked_core: bool = False
 
     def IS_ore_ignore(self):
         """Check if an ore is being ignored"""
@@ -29,7 +34,9 @@ class OreInfo:
         elif self.barr == 2: b = "Enemy"
 
         return (
-            f"* {e} ore: Pos({self.pos.x}, {self.pos.y})\n"
+            f"* {e}({self.pos.x}, {self.pos.y})\n"
+            f"Harv: {self.harv}\n"
+            f"Mark: {m} | Barr: {b}\n"
             f"[Ignore]: {self.ignore}\n"
-            f"Mark: {m} | Harv: {self.harv} | Barr: {b}\n"
+            f"[Core linked]: {self.linked_core}"
         )
