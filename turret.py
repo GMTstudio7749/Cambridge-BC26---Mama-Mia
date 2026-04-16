@@ -1,5 +1,6 @@
 from cambc import Controller, Position, Team
 from utils import *
+from global_func import *
 
 class Turret():
 	def __init__(self):
@@ -36,9 +37,14 @@ class Turret():
 			self.SENTINEL_run(ct)
 		if self.my_type == EntityType.LAUNCHER:
 			self.LAUNCHER_run(ct)
+		if self.my_type == EntityType.GUNNER :
+			self.GUNNER_run(ct)
 
 	def SENTINEL_run(self, ct: Controller) :
 		"""Main sentinel runner"""
+		if ct.get_ammo_amount() == 0 :
+			return
+		
 		enemy_turrets = [64,Position(-1,-1)]
 		enemy_builds = [64,Position(-1,-1)]
 		enemy_transports = [64,Position(-1,-1)]
@@ -48,35 +54,37 @@ class Turret():
 		target_hp : int
 		target_pos : Position
 		target : int | None
+
 		for pos in self.targetable :
-			if ct.get_tile_builder_bot_id(pos) is not None :
-				target = ct.get_tile_builder_bot_id(pos)
-			elif ct.get_tile_building_id(pos) is not None :
+			target = ct.get_tile_builder_bot_id(pos)
+			if target is None :
 				target = ct.get_tile_building_id(pos)
-			else :
+			if target is None :
 				continue
 			target_hp = ct.get_hp(target)
 			target_pos = ct.get_position(target)
+
 			if ct.get_team(target) != self.MY_TEAM and ct.can_fire(target_pos) :
 				target_type = ct.get_entity_type(target)
-				if target_type == EntityType.SENTINEL or target_type == EntityType.BREACH or target_type == EntityType.GUNNER or target_type == EntityType.LAUNCHER :
+				if target_type == EntityType.SENTINEL or target_type == EntityType.BREACH or target_type == EntityType.GUNNER or target_type == EntityType.LAUNCHER : #This category directly threatens ally units
 					if target_hp < enemy_turrets[0] :
 						enemy_turrets[0] = target_hp
 						enemy_turrets[1] = target_pos
-				elif target_type == EntityType.BUILDER_BOT or target_type == EntityType.FOUNDRY :
+				elif target_type == EntityType.BUILDER_BOT or target_type == EntityType.FOUNDRY : #This category decides the win/loss of the game
 					if target_hp < enemy_builds[0] :
 						enemy_builds[0] = target_hp
 						enemy_builds[1] = target_pos
-				elif target_type == EntityType.CONVEYOR or target_type == EntityType.ARMOURED_CONVEYOR or target_type == EntityType.BRIDGE :
+				elif target_type == EntityType.CONVEYOR or target_type == EntityType.ARMOURED_CONVEYOR or target_type == EntityType.BRIDGE : #This category decides enemy's prosperity
 					if target_hp < enemy_transports[0] :
 						enemy_transports[0] = target_hp
 						enemy_transports[1] = target_pos
-				elif target_type == EntityType.CORE :
+				elif target_type == EntityType.CORE : #This category is not the most beneficial target for sentinel
 					enemy_core = target_pos
-				elif target_type == EntityType.BARRIER :
+				elif target_type == EntityType.BARRIER : #This category is mandatory to destroy
 					if target_hp < enemy_barriers[0] :
 						enemy_barriers[0] = target_hp
 						enemy_barriers[1] = target_pos
+
 		if enemy_turrets[1] != Position(-1,-1):
 			ct.fire(enemy_turrets[1])
 		elif enemy_builds[1] != Position(-1,-1):
@@ -106,27 +114,148 @@ class Turret():
 			return
 
 		rotation = self.my_pos.direction_to(target)
+		nearby_tiles = set(ct.get_nearby_tiles())
+		delete_list : list[Position] = []
 
-		for tile in ct.get_nearby_tiles():
+		for tile in nearby_tiles : #Registering vulnerable ally buildings
+			id = ct.get_tile_building_id(tile)
+			if id is not None :
+				type = ct.get_entity_type(id)
+			else :
+				continue
+			if ct.get_team(id) == self.MY_TEAM and type != EntityType.LAUNCHER and type != EntityType.BARRIER :
+				delete_list.append(tile)
+
+		for tile in delete_list : #Making sure landing location doesn't provide enemy with offensive opportunity
+			nearby_tiles.discard(tile)
+			nearby_tiles.discard(tile.add(Direction.NORTH))
+			nearby_tiles.discard(tile.add(Direction.SOUTH))
+			nearby_tiles.discard(tile.add(Direction.EAST))
+			nearby_tiles.discard(tile.add(Direction.WEST))
+			nearby_tiles.discard(tile.add(Direction.NORTHEAST))
+			nearby_tiles.discard(tile.add(Direction.NORTHWEST))
+			nearby_tiles.discard(tile.add(Direction.SOUTHEAST))
+			nearby_tiles.discard(tile.add(Direction.SOUTHWEST))
+
+		for tile in nearby_tiles: #Registering landing locations
 			dir = self.my_pos.direction_to(tile)
 			dist = self.my_pos.distance_squared(tile)
+			if ct.can_launch(target, tile) and (dir not in throw_dir or throw_dir[dir][0] < dist) :
+				throw_dir[dir] = (dist, tile)
 
-			if ct.can_launch(target, tile):
-				if dir not in throw_dir or throw_dir[dir][0] < dist:
-					throw_dir[dir] = (dist, tile)
-
-		check_dirs = [
-			rotation,
-			rotation.rotate_right(),
-			rotation.rotate_left(),
-			rotation.rotate_right().rotate_right(),
-			rotation.rotate_left().rotate_left(),
-			rotation.rotate_right().rotate_right().rotate_right(),
-			rotation.rotate_left().rotate_left().rotate_left(),
-			rotation.opposite()
-		]
+		to_right = rotation
+		to_left = rotation
+		check_dirs = [ rotation ]
+		for _ in range(3) :
+			to_right.rotate_right()
+			to_left.rotate_left()
+			if rand.gen() % 2 == 0 :
+				check_dirs.append(to_left)
+				check_dirs.append(to_right)
+			else :
+				check_dirs.append(to_right)
+				check_dirs.append(to_left)
+		check_dirs.append(rotation.opposite())
 
 		for d in check_dirs:
 			if d in throw_dir:
 				ct.launch(target, throw_dir[d][1])
+				return
+			
+	def GUNNER_run(self, ct : Controller ) :
+		"""Main gunner runner"""
+		if ct.get_ammo_amount() == 0 :
+			return
+		
+		north_attackables = ct.get_attackable_tiles_from(self.my_pos,Direction.NORTH,self.my_type)
+		south_attackables = ct.get_attackable_tiles_from(self.my_pos,Direction.SOUTH,self.my_type)
+		east_attackables = ct.get_attackable_tiles_from(self.my_pos,Direction.EAST,self.my_type)
+		west_attackables = ct.get_attackable_tiles_from(self.my_pos,Direction.WEST,self.my_type)
+		northeast_attackables = ct.get_attackable_tiles_from(self.my_pos,Direction.NORTHEAST,self.my_type)
+		northwest_attackables = ct.get_attackable_tiles_from(self.my_pos,Direction.NORTHWEST,self.my_type)
+		southeast_attackables = ct.get_attackable_tiles_from(self.my_pos,Direction.SOUTHEAST,self.my_type)
+		southwest_attackables = ct.get_attackable_tiles_from(self.my_pos,Direction.SOUTHWEST,self.my_type)
+		check_list = [
+			Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST, Direction.NORTHEAST, Direction.NORTHWEST, Direction.SOUTHEAST, Direction.SOUTHWEST
+			]
+		score : dict[int,list[Direction]] = {}
+		cur : list[Position]
+
+		rotation = Direction.CENTRE
+		if self.targetable == north_attackables :
+			rotation = Direction.NORTH
+		elif self.targetable == south_attackables :
+			rotation = Direction.SOUTH
+		elif self.targetable == east_attackables :
+			rotation = Direction.EAST
+		elif self.targetable == west_attackables :
+			rotation = Direction.WEST
+		elif self.targetable == northeast_attackables :
+			rotation = Direction.NORTHEAST
+		elif self.targetable == northwest_attackables :
+			rotation = Direction.NORTHWEST
+		elif self.targetable == southeast_attackables :
+			rotation = Direction.SOUTHEAST
+		elif self.targetable == southwest_attackables :
+			rotation = Direction.SOUTHWEST
+
+		for dir in check_list :
+			if dir == Direction.NORTH :
+				cur = north_attackables
+			elif dir == Direction.SOUTH :
+				cur = south_attackables
+			elif dir == Direction.EAST :
+				cur = east_attackables
+			elif dir == Direction.WEST :
+				cur = west_attackables
+			elif dir == Direction.NORTHEAST :
+				cur = northeast_attackables
+			elif dir == Direction.NORTHWEST :
+				cur = northwest_attackables
+			elif dir == Direction.SOUTHEAST :
+				cur = southeast_attackables
+			elif dir == Direction.SOUTHWEST :
+				cur = southwest_attackables
+			point = 0
+
+			for pos in cur :
+				target = ct.get_tile_building_id(pos)
+				if target is None :
+					target = ct.get_tile_builder_bot_id(pos)
+				if target is None or ct.get_entity_type(target) == EntityType.MARKER :
+					continue
+
+				target_type = ct.get_entity_type(target)
+				if target_type == EntityType.SENTINEL or target_type == EntityType.BREACH or target_type == EntityType.GUNNER or target_type == EntityType.LAUNCHER : #This category directly threatens ally units
+					point += 103
+				elif target_type == EntityType.CORE : #This category is the most beneficial target for this unit
+					point += 25
+				elif target_type == EntityType.CONVEYOR or target_type == EntityType.ARMOURED_CONVEYOR or target_type == EntityType.BRIDGE or target_type == EntityType.FOUNDRY : #This category is immovable and decides enemy's prosperity, hence allows efficient&fast destruction
+					point += 13
+				elif target_type == EntityType.BARRIER : #This category is mandatory to destroy
+					point += 4
+				elif target_type == EntityType.BUILDER_BOT : #This category is movable and tanky, making it hard to destroy quickly and effectively
+					point += 1
+
+			if dir == rotation and point > 0 :
+				point += 51
+			if point not in score :
+				score[point] = []
+			score[point].append(dir)
+
+		point = list(score.keys())[-1]
+		desired_rotation = score[point][rand.gen()%len(score[point])]
+		if ct.can_rotate(desired_rotation):
+			if desired_rotation != rotation and point > 3 :
+				ct.rotate(desired_rotation)
+				self.TURRET_update(ct)
+
+		for pos in self.targetable :
+			target = ct.get_tile_builder_bot_id(pos)
+			if target is None :
+				target = ct.get_tile_building_id(pos)
+			if target is None or ct.get_entity_type(target) == EntityType.MARKER :
+				continue
+			if ct.can_fire(pos) :
+				ct.fire(pos)
 				return

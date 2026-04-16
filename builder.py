@@ -1,5 +1,4 @@
-from cambc import Controller, Direction, EntityType, Position, Team
-from cambc import GameConstants
+from cambc import Controller, Direction
 from bld_context import ctx
 from bld_eco import BldEco
 from bld_rush import BldRush
@@ -29,7 +28,6 @@ class Builder:
 
         # FUNCTION
         ctx.bugnav.SETUP(ct)
-        ctx.explore.EXPLORE_setup(ct, ct.get_position(), ctx.CORE_POS)
 
     def BUILDER_decide_work(self, core_dir: Direction):
         """Builder work decision func, depends on direction to ally CORE\n
@@ -75,7 +73,6 @@ class Builder:
             self.setup = True
 
         print(f"[WORK]: {self.work}\n")
-        print(f"[CORE DIR]: {ctx.CORE_DIR}")
 
         # General UPDATE
         ctx.UPD_round_turn(ct)

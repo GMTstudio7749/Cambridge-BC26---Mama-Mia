@@ -1,115 +1,6 @@
 import random
-from cambc import Controller, Direction, EntityType, Environment, Position
+from cambc import Direction, EntityType, Environment, Position
 from utils import *
-
-class Explore:
-	"""Class for explore purpose for builder"""
-	def __init__(self):
-		self.MAP_WIDTH = -1
-		self.MAP_HEIGHT = -1
-
-		self.Explore_Dir = Direction.CENTRE
-		self.Explore_Target = Position(-1, -1)
-		self.Explore_Turn = -1
-
-		self.bugnav = BugNav()
-	
-	def EXPLORE_setup(self, ct: Controller, spawn_pos: Position, core_pos: Position):
-		"""Setup explore move function infos and const, along with bugnav"""
-		self.bugnav.SETUP(ct)
-		self.MAP_WIDTH = ct.get_map_width()
-		self.MAP_HEIGHT = ct.get_map_height()
-
-		sx, sy = spawn_pos.x, spawn_pos.y
-		cx, cy = core_pos.x, core_pos.y
-		if sx < cx and sy < cy:
-			self.Explore_Dir = Direction.NORTHWEST
-		elif sx < cx and sy > cy:
-			self.Explore_Dir = Direction.SOUTHWEST
-		elif sx > cx and sy < cy:
-			self.Explore_Dir = Direction.NORTHEAST
-		else:
-			self.Explore_Dir = Direction.SOUTHEAST
-
-	def IS_in_map(self, x: int, y: int):
-		"""Check if two int x, y is located in map"""
-		if x < 0 or x >= self.MAP_WIDTH or y < 0 or y >= self.MAP_HEIGHT:
-			return False
-		return True
-
-	def GET_next_bounce_dir(self, dir: Direction, edge_pos: Position):
-		"""Get the next bounce dir depends on current dir and edge pos"""
-		if dir not in Diagonal_Dirs:
-			return random.choice(Diagonal_Dirs)
-		
-		bounce_dir = dir.opposite()
-		for _ in range(4):
-			bounce_dir = bounce_dir.rotate_right().rotate_right()
-			
-			dx, dy = bounce_dir.delta()
-			nx, ny = edge_pos.x + dx, edge_pos.y + dy
-			if not self.IS_in_map(nx, ny): continue
-			return bounce_dir
-
-		return random.choice(Diagonal_Dirs)	
-	
-	def GET_next_explore_target(self, ct: Controller, dir: Direction):
-		"""Get the next explore target, depends on dir and position\n
-		if dir = Direction.CENTRE -> just random a diagonal dir"""
-		X, Y = self.Explore_Target.x, self.Explore_Target.y
-		if X < 0 or Y < 0:
-			X, Y = ct.get_position().x, ct.get_position().y
-
-		if dir == Direction.CENTRE:
-			dir = random.choice(Diagonal_Dirs)
-		elif not dir in Diagonal_Dirs:
-			dir = dir.rotate_right()
-		
-		dx, dy = dir.delta()
-		if dx == 1:
-			tx = (self.MAP_WIDTH - 1) - X
-		else:  # dx == -1
-			tx = X
-
-		if dy == 1:
-			ty = (self.MAP_HEIGHT - 1) - Y
-		else:  # dy == -1
-			ty = Y
-
-		t = min(tx, ty)
-		nx, ny = X + dx * t, Y + dy * t
-		return Position(nx, ny)
-
-	def MOVE_explore(self, ct: Controller, range_squared: int, max_turn: int):
-		"""Explore movement function, reset max_turn rounds\n
-		Move to an accepted range within the explore target"""
-		if self.Explore_Target == Position(-1, -1):
-			self.Explore_Target = self.GET_next_explore_target(ct, self.Explore_Dir)
-			self.Explore_Turn = max_turn
-
-		my_pos = ct.get_position()
-		cur_dis = my_pos.distance_squared(self.Explore_Target)
-		if cur_dis <= range_squared or self.Explore_Turn < 1:
-			self.Explore_Turn = max_turn
-			self.Explore_Dir = self.GET_next_bounce_dir(self.Explore_Dir, self.Explore_Target)
-			self.Explore_Target = self.GET_next_explore_target(ct, self.Explore_Dir)
-
-		if ct.get_move_cooldown() == 0:
-			self.Explore_Turn = self.Explore_Turn - 1
-			self.bugnav.SENSE_nearby(ct)
-			self.bugnav.MOVE_to_target(ct, self.Explore_Target, False)
-
-	def EXPLORE_debug(self, ct: Controller):
-		"""Explore debug function"""
-		# Print
-		print("\n== EXPLORE stat ==")
-		print(f"Target: ({self.Explore_Target.x}, {self.Explore_Target.y})")
-		print(f"Dir: {self.Explore_Dir.value}")
-		print(f"Turn: {self.Explore_Turn}")
-		if(ct.get_move_cooldown() == 0):
-			print("move FAIL!")
-		# Draw
-		ct.draw_indicator_dot(self.Explore_Target, 100, 100, 255)
 		
 class BugNav:
 	def __init__(self):
@@ -131,14 +22,14 @@ class BugNav:
 		self.lastTargetLocation = None
 		self.bugStackIndex = 0
 		self.MAX_STACK_SIZE = 100
-		self.bugStack = [None] * self.MAX_STACK_SIZE
+		self.bugStack: list[Direction] = [] * self.MAX_STACK_SIZE
 		self.stuckTurns = 0
 		self.jiggleRight = False
 		self.dir_order = [Direction.NORTH, Direction.NORTHEAST, Direction.EAST, Direction.SOUTHEAST, Direction.SOUTH, Direction.SOUTHWEST, Direction.WEST, Direction.NORTHWEST, Direction.CENTRE]
 		self.RIGHT = random.randint(0, 1)
 
 		self.originConnect = None
-		self.lastConnect = None
+		self.lastConnect: Position = Position(-1, -1)
 
 		self.currentConnections = []
 
@@ -212,7 +103,7 @@ class BugNav:
 			return False
 		checkLoc = loc
 		while(not checkLoc == target):
-			ct.draw_indicator_line(loc, target, 255, 255, 255)
+			# ct.draw_indicator_line(loc, target, 255, 255, 255)
 			info = self.mapInfos[checkLoc.x][checkLoc.y]
 			if(not self.onTheMap(ct, checkLoc) or (info != None and (self.mapInfos[checkLoc.x][checkLoc.y] in TURRET_TYPE or info == EntityType.HARVESTER or info == "ECORE" or  info == Environment.WALL or info == "EBarrier" or info == EntityType.BARRIER))):
 				return False
@@ -276,7 +167,7 @@ class BugNav:
 		if(not self.onTheMap(ct, loc)):
 			return -99999
 		if(not ct.is_in_vision(loc)):
-			print(ct.get_current_round(), ct.get_id())
+			# print(ct.get_current_round(), ct.get_id())
 			return -99999
 		if(currentLoc.distance_squared(loc) > 9):
 			return -99999
@@ -375,7 +266,7 @@ class BugNav:
 	def MOVE_to_target(self, ct, loc: Position, zigzag: bool, allyScore=0, enemyScore=0, emptyScore=-2):
 		# THIS HERE, EXPLORE USING ROAD ONLY, NO CONVEYOR BUILD
 
-		ct.draw_indicator_line(ct.get_position(), loc, 255, 0, 0)
+		# ct.draw_indicator_line(ct.get_position(), loc, 255, 0, 0)
 
 		if(not ct.get_move_cooldown() == 0): return
 
@@ -384,7 +275,7 @@ class BugNav:
 
 
 		if(self.lastTargetLocation == None or self.lastTargetLocation.distance_squared(loc) > 8 or self.bugStackIndex >= self.MAX_STACK_SIZE-10):
-			self.bugStack = [None] * self.MAX_STACK_SIZE
+			self.bugStack = [Direction.CENTRE] * self.MAX_STACK_SIZE
 			self.bugStackIndex = 0
 			self.lastTargetLocation = loc
 			self.lastLocation = ct.get_position()
@@ -413,8 +304,8 @@ class BugNav:
 			self.bugStackIndex -= 1
 
 		if(self.reachableFrom(ct, ct.get_position(), loc)):
-			print("REACHED SMT")
-			self.bugStack = [None] * self.MAX_STACK_SIZE
+			# print("REACHED SMT")
+			self.bugStack = [Direction.CENTRE] * self.MAX_STACK_SIZE
 			self.bugStackIndex = 0
 
 		if(self.bugStackIndex == 0):
@@ -472,19 +363,19 @@ class BugNav:
 			locCheck = ct.get_position().add(dirToTarget.rotate_right())
 			checkRightRobot = self.onTheMap(ct, locCheck) and  ct.get_tile_builder_bot_id(locCheck) != None
 			if(checkFrontRobot and checkLeftRobot and checkRightRobot):
-				print("FUZZY MOVIGN")
+				# print("FUZZY MOVIGN")
 				self.fuzzyMove(ct, dirToTarget.opposite())
 				return
 			self.bugStack[self.bugStackIndex] = dirToTarget.rotate_left() if self.RIGHT else dirToTarget.rotate_right()
 			self.bugStackIndex += 1
 
 		if(self.RIGHT):
-			print("RIGHTING")
+			# print("RIGHTING")
 			dir = self.bugStack[self.bugStackIndex-1].rotate_right()
 			for i in range(8):
 				if(not self.canMove(ct, ct.get_position().add(dir))  ):
 					if(not self.onTheMap(ct, ct.get_position().add(dir))):
-						self.bugStack = [None] * self.MAX_STACK_SIZE
+						self.bugStack = [Direction.CENTRE] * self.MAX_STACK_SIZE
 						self.bugStackIndex = 0
 						self.RIGHT = not self.RIGHT
 						break
@@ -504,10 +395,10 @@ class BugNav:
 		else:
 
 			dir = self.bugStack[self.bugStackIndex-1].rotate_left()
-			for i in range(8):
+			for _ in range(8):
 				if(not self.canMove(ct, ct.get_position().add(dir))  ):
 					if(not self.onTheMap(ct, ct.get_position().add(dir))):
-						self.bugStack = [None] * self.MAX_STACK_SIZE
+						self.bugStack = [Direction.CENTRE] * self.MAX_STACK_SIZE
 						self.bugStackIndex = 0
 						self.RIGHT = not self.RIGHT
 						break
@@ -728,7 +619,7 @@ class BugNav:
 		elif(btype == EntityType.ROAD):
 			if(ct.can_destroy(pos)):
 				ct.destroy(pos)
-				print("SO BAD")
+				# print("SO BAD")
 				if(ct.can_build_conveyor(pos, dir)):
 					ct.build_conveyor(pos, dir)
 					if(save):
@@ -779,8 +670,9 @@ class BugNav:
 		if(self.lastTargetLocation is not None and len(self.currentConnections) > 2 and self.lastTargetLocation.direction_to(self.currentConnections[-2]) == dir):
 			return False
 		if(self.lastTargetLocation is not None and len(self.currentConnections) > 2):
-			ct.draw_indicator_line(self.lastLocation, self.currentConnections[-2], 100, 100, 150)
+			# ct.draw_indicator_line(self.lastLocation, self.currentConnections[-2], 100, 100, 150)
 			# print(self.lastTargetLocation.direction_to(self.currentConnections[-2]))
+			pass
 
 		if(not self.onTheMap(ct, loc) or not ct.is_in_vision(loc)):
 			return False
@@ -789,7 +681,7 @@ class BugNav:
 		nextBtype = ct.get_entity_type(nextBid)
 		nextBteam = ct.get_team(nextBid)
 
-		ct.draw_indicator_line(loc, ct.get_position(), 255, 100, 255)
+		# ct.draw_indicator_line(loc, ct.get_position(), 255, 100, 255)
 		if(not self.canMove(ct, loc)):
 			return False
 
@@ -798,7 +690,7 @@ class BugNav:
 		x = loc.x
 		y = loc.y
 		if(self.mapInfos[x][y] == Environment.WALL or self.mapInfos[x][y] == Environment.ORE_AXIONITE or self.mapInfos[x][y] == Environment.ORE_TITANIUM):
-			print("THIS IS BAD")
+			# print("THIS IS BAD")
 
 			return False
 		if(self.mapInfos[x][y] == Environment.EMPTY):
@@ -806,21 +698,21 @@ class BugNav:
 		if(nextBtype == EntityType.CORE):
 			return True
 		if(nextBtype == EntityType.CONVEYOR):
-			ct.draw_indicator_line(Position(0, 0), loc.add(ct.get_direction(nextBid)), 25, 105, 225)
-			ct.draw_indicator_line(Position(0, 0), loc, 25, 105, 225)
+			# ct.draw_indicator_line(Position(0, 0), loc.add(ct.get_direction(nextBid)), 25, 105, 225)
+			# ct.draw_indicator_line(Position(0, 0), loc, 25, 105, 225)
 			if(ct.get_direction(nextBid) == dir.opposite()):
-				print(loc, ct.get_direction(nextBid), dir.opposite())
+				# print(loc, ct.get_direction(nextBid), dir.opposite())
 				return False
 		if(nextBtype == EntityType.BRIDGE):
 			if(ct.get_bridge_target(nextBid) == ct.get_position()):
 				return False
-		print(loc)
+		# print(loc)
 		return True
 
 	def tryDirWithConveyor(self, ct, dir):
-		print(dir)
+		# print(dir)
 		nextPos = ct.get_position().add(dir)
-		ct.draw_indicator_line(ct.get_position(), nextPos, 255, 255, 255)
+		# ct.draw_indicator_line(ct.get_position(), nextPos, 255, 255, 255)
 		if(dir == self.toCardinal(dir)):
 			self.tryBuildConveyor(ct, self.lastConnect, dir)
 		else:
@@ -835,7 +727,7 @@ class BugNav:
 	def MOVE_to_target_with_conveyor(self, ct, origin: Position, loc: Position, dist=2):
 		# THIS HERE, EXPLORE USING CONVEYOR + ROAD, dont care about allyScore, enemyScore and emptyScore
 		
-		ct.draw_indicator_line(ct.get_position(), loc, 255, 255, 0)
+		# ct.draw_indicator_line(ct.get_position(), loc, 255, 255, 0)
 		
 
 		if(not ct.get_move_cooldown() == 0): return
@@ -848,10 +740,10 @@ class BugNav:
 			self.originConnect = origin
 			self.lastConnect = origin
 			self.currentConnections = []
-			print("RESETED CONENCTIONS")
+			# print("RESETED CONENCTIONS")
 
 
-		if(ct.get_position().distance_squared(self.lastConnect) > 2):
+		if(ct.get_position().distance_squared(self.lastConnect) > 0): # LAST TIME 2
 			self.MOVE_to_target(ct, self.lastConnect, False, 0, 0, 0)
 			return
 
@@ -860,12 +752,12 @@ class BugNav:
 		self.currentLocation = ct.get_position()
 
 		if(self.lastTargetLocation == None or self.lastTargetLocation.distance_squared(loc) > 8 or self.bugStackIndex >= self.MAX_STACK_SIZE-10):
-			print("BUGSTACK ", self.bugStackIndex)
-			self.bugStack = [None] * self.MAX_STACK_SIZE
+			# print("BUGSTACK ", self.bugStackIndex)
+			self.bugStack = [Direction.CENTRE] * self.MAX_STACK_SIZE
 			self.bugStackIndex = 0
 			self.lastTargetLocation = loc
 			self.lastLocation = ct.get_position()
-			print("RESETED CONENCTIONS2")
+			# print("RESETED CONENCTIONS2")
 
 		if(loc.distance_squared(self.lastConnect) <= dist):
 			return "STUCK"
@@ -875,11 +767,12 @@ class BugNav:
 
 
 		if(self.lastConnect != None):
-			ct.draw_indicator_line(self.lastConnect, Position(0, 0), 255, 255, 100)
+			pass
+			# ct.draw_indicator_line(self.lastConnect, Position(0, 0), 255, 255, 100)
 
 		if(self.lastConnect not in self.currentConnections):
 			self.currentConnections.append(self.lastConnect)
-		print(self.currentConnections)
+		# print(self.currentConnections)
 		# thứ duy nhất hắn có thể làm, cũng là điều duy nhất hắn muốn làm chính là kiên trì đến cùng
 		
 		while (
@@ -904,7 +797,7 @@ class BugNav:
 			self.bugStackIndex -= 1
 
 		if(self.reachableFrom(ct, ct.get_position(), loc)):
-			self.bugStack = [None] * self.MAX_STACK_SIZE
+			self.bugStack = [Direction.CENTRE] * self.MAX_STACK_SIZE
 			self.bugStackIndex = 0
 		
 		bid = ct.get_tile_building_id(self.lastConnect)
@@ -961,12 +854,12 @@ class BugNav:
 			self.bugStackIndex += 1
 
 		if(self.RIGHT):
-			print("LEFTING")
+			# print("LEFTING")
 			dir = self.bugStack[self.bugStackIndex-1].rotate_right()
 			for i in range(8):
 				if(not self.canMoveDirWithConveyor(ct, ct.get_position().add(dir), dir) or self.tooCloseToDanger(ct, ct.get_position().add(dir)) ):
 					if(not self.onTheMap(ct, ct.get_position().add(dir))):
-						self.bugStack = [None] * self.MAX_STACK_SIZE
+						self.bugStack = [Direction.CENTRE] * self.MAX_STACK_SIZE
 						self.bugStackIndex = 0
 						self.RIGHT = not self.RIGHT
 						break
@@ -984,12 +877,12 @@ class BugNav:
 						return
 				dir = dir.rotate_right()
 		else:
-			print("RIGHTING")
+			# print("RIGHTING")
 			dir = self.bugStack[self.bugStackIndex-1].rotate_left()
 			for i in range(8):
 				if(not self.canMoveDirWithConveyor(ct, ct.get_position().add(dir), dir) or self.tooCloseToDanger(ct, ct.get_position().add(dir)) ):
 					if(not self.onTheMap(ct, ct.get_position().add(dir))):
-						self.bugStack = [None] * self.MAX_STACK_SIZE
+						self.bugStack = [Direction.CENTRE] * self.MAX_STACK_SIZE
 						self.bugStackIndex = 0
 						self.RIGHT = not self.RIGHT
 						break

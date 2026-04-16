@@ -8,7 +8,7 @@ class OreInfo:
 
         # Building on ore
         self.mark: int = 0
-        self.harv: bool = False
+        self.harv: int = 0
         self.barr: int = 0
 
         # Ore status

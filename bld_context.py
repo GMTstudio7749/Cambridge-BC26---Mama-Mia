@@ -1,13 +1,12 @@
 from cambc import Controller, EntityType, Environment, Position, Team
 from ore_info import OreInfo
-from bld_move import BugNav, Explore
+from bld_move import BugNav
 from utils import *
 
 class BldContext:
     def __init__(self):
         # CLASS
         self.bugnav = BugNav()
-        self.explore = Explore()
 
         # CONSTANT
         self.MAP_WIDTH: int
@@ -21,6 +20,7 @@ class BldContext:
         self.Cur_Round = -1
         self.Turn_Count = 0
         self.Ores: dict[tuple[int, int], OreInfo] = {}
+        self.Ores_Count = 0 # NO NEED FOR THIS FUKING SHIT
 
         # RESOURCE
         self.Glob_Tit = -1
@@ -71,19 +71,15 @@ class BldContext:
             ore.mark, ore.barr = mval, barr
             if not harv is None: ore.harv = harv
             if not linked_core is None: ore.linked_core = linked_core
-            
-            '''if mval == 36 and ore.ignore == 0:
-                ore.ignore = MAX_ORE_IGNORE_TURN'''
         # NEW
         else:
+            self.Ores_Count = self.Ores_Count + 1
             ore = OreInfo(ore_pos, env)
             ore.mark, ore.barr = mval, barr
             if not harv is None: ore.harv = harv
             if not linked_core is None: ore.linked_core = linked_core
 
             ore.ignore = 0
-            '''if mval == 36:
-                ore.ignore = MAX_ORE_IGNORE_TURN'''
 
             self.Ores[key] = ore
 
@@ -96,6 +92,7 @@ class BldContext:
     def ORE_debug(self):
         """Print all ores status for debug purpose"""
         print("\n=== ORE STAT ===")
+        print(f"[COUNT]: {self.Ores_Count}")
         for ore in self.Ores.values():
             print(ore)
             print("---------------")
@@ -161,14 +158,18 @@ class BldContext:
     #region ----- CHECK func -----
     def CHECK_harvester(self, ct: Controller, tile_pos: Position):
         """Check if a harvester is placed on a position\n
-           If out of vision, return None"""
-        if not ct.is_in_vision(tile_pos): return None
+           Return 0 = None | 1 = Friendly | 2 = Enemy\n
+           If out of vision, return 0"""
+        if not ct.is_in_vision(tile_pos): return 0
 
         ID = ct.get_tile_building_id(tile_pos)
-        if ID is None: return False
+        if ID is None: return 0
         if ct.get_entity_type(ID) == EntityType.HARVESTER:
-            return True
-        return False
+            if ct.get_team(ID) == self.MY_TEAM:
+                return 1
+            else:
+                return 2
+        return 0
 
     def CHECK_barrier(self, ct: Controller, tile_pos: Position):
         """Check barrier is placed on a position\n

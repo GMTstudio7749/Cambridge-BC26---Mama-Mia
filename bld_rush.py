@@ -25,6 +25,10 @@ class BldRush():
         self.bots_pos = {}
         self.return_home = False
 
+        self.already_find_closest_harvester = False
+        self.closest_harvester = Position(-1, -1)
+        self.harvester_hp = 0
+
 
         self.current_max_attack_turn_count = 0
 
@@ -76,7 +80,7 @@ class BldRush():
                 x = cur.x + dx
                 y = cur.y + dy
 
-                if not ctx.explore.IS_in_map(x, y):
+                if not ctx.IS_in_map(Position(x, y)):
                     continue
 
                 attackable = self.attackables[x][y]
@@ -122,7 +126,7 @@ class BldRush():
 
 
     def GOT_nearby_working_bot(self, ct, attackable_pos):
-        if(not ct.is_in_vision(attackable_pos) or not ctx.explore.IS_in_map(attackable_pos.x, attackable_pos.y)):
+        if(not ct.is_in_vision(attackable_pos) or not ctx.IS_in_map(attackable_pos)):
             return 0
         if(self.MODE == "HARASS" or self.MODE == "TRACE" or self.MODE == "CONCENTRATE"):
             out = self.bots_pos.get(attackable_pos, 0)
@@ -130,7 +134,7 @@ class BldRush():
 
         else:
             # ct.draw_indicator_line(ct.get_position(), attackable_pos, 255, 255, 25)
-            if(not ct.is_in_vision(attackable_pos) or not ctx.explore.IS_in_map(attackable_pos.x, attackable_pos.y)):
+            if(not ct.is_in_vision(attackable_pos) or not ctx.IS_in_map(attackable_pos)):
                 return 0
             if(ct.get_position() == attackable_pos):
                 return 0
@@ -207,7 +211,7 @@ class BldRush():
         index = -1
         for i in range(len(self.tried_place_marker)):
             if(self.tried_place_marker[i] == False):
-                if(not ctx.explore.IS_in_map(self.place_marker_pos[i].x, self.place_marker_pos[i].y)):
+                if(not ctx.IS_in_map(self.place_marker_pos[i])):
                     self.tried_place_marker[i] = True
                     continue
                 if(ct.is_in_vision(self.place_marker_pos[i])):
@@ -267,7 +271,7 @@ class BldRush():
 
         for dir in All_Dirs:
             pos = loc.add(dir)
-            if(not ct.is_in_vision(pos) or not ctx.explore.IS_in_map(pos.x, pos.y)):
+            if(not ct.is_in_vision(pos) or not ctx.IS_in_map(pos)):
                 continue
 
             botid = ct.get_tile_builder_bot_id(pos)
@@ -279,7 +283,7 @@ class BldRush():
 
 
                 launcherPos = pos.add(i)
-                if(not ct.is_in_vision(launcherPos) or not ctx.explore.IS_in_map(launcherPos.x, launcherPos.y)):
+                if(not ct.is_in_vision(launcherPos) or not ctx.IS_in_map(launcherPos)):
                     continue
                 bid = ct.get_tile_building_id(launcherPos)
                 btype = ct.get_entity_type(bid)
@@ -290,7 +294,7 @@ class BldRush():
                 continue
             for i in Dirs:
                 launcherPos = pos.add(i)
-                if(not ct.is_in_vision(launcherPos)  or not ctx.explore.IS_in_map(launcherPos.x, launcherPos.y)):
+                if(not ct.is_in_vision(launcherPos)  or not ctx.IS_in_map(launcherPos)):
                     continue
                 bid = ct.get_tile_building_id(launcherPos)
                 btype = ct.get_entity_type(bid)
@@ -451,6 +455,32 @@ class BldRush():
 
         else:
             ctx.bugnav.MOVE_to_target(ct, self.target_attackable, False, 0, 0, 2)
+    def RUSH_get_closest_enemy_harvester_to_core(self, ct: Controller):
+        if ct.get_position().distance_squared(self.enemy_core_pos) <= 2:
+            ctx.bugnav.MOVE_to_target(ct, self.enemy_core_pos, False, 0, 0, 2)
+        enemy_building = ct.get_nearby_buildings()
+        min_dist = 676767
+        for bid in enemy_building:
+            bteam = ct.get_team(bid)
+            bpos = ct.get_position(bid)
+            if(bteam == ct.get_team()):
+                pass
+            else:
+                if bid == EntityType.HARVESTER:
+                    dist_to_core = self.enemy_core_pos.distance_squared(bpos)
+                    if dist_to_core < min_dist:
+                        dist_to_core = min_dist
+                        self.closest_harvester = bpos
+    def RUSH_target_enemy_nearest_harvester(self, ct: Controller):
+        self.RUSH_get_closest_enemy_harvester_to_core(ct)
+        if ct.get_position().distance_squared(self.closest_harvester) <= 2:
+            ctx.bugnav.MOVE_to_target(ct, self.closest_harvester, False, 0, 0, 2)
+        self.harvester_hp = ct.get_hp(ct.get_tile_building_id(self.closest_harvester))
+        while self.harvester_hp > 0:
+            if ct.can_fire(self.closest_harvester):
+                ct.fire(self.closest_harvester)
+                self.harvester_hp = ct.get_hp(ct.get_tile_building_id(self.closest_harvester))
+        #Placing turrests or sth after destroy the enemy nearest harvester
 
 
 
@@ -552,6 +582,9 @@ class BldRush():
             self.RUSH_attack(ct)
         elif(self.state == "ATTACK_TARGET_NORMAL"):
             self.RUSH_attack_target_normal(ct)
+        #If the rush don't work, change state for everyone to target enemy nearest harvestor
+        elif(self.state == "RUSH_FAIL"):
+            self.RUSH_target_enemy_nearest_harvester(ct);
         elif(self.state == "BACK_TO_CORE"):
             self.RUSH_back_to_core(ct)
             
@@ -568,7 +601,7 @@ class BldRush():
                     if(ctx.Glob_Tit < ctx.Convey_Cost):
                         break
                     pos = ct.get_position().add(dir)
-                    if(not ctx.explore.IS_in_map(pos.x, pos.y)):
+                    if(not ctx.IS_in_map(pos)):
                         continue
                     bid = ct.get_tile_building_id(pos)
                     btype = ct.get_entity_type(bid)
@@ -579,7 +612,7 @@ class BldRush():
                     gotLauncher = False
                     for i in Dirs:
                         loc = pos.add(i)
-                        if(not ctx.explore.IS_in_map(loc.x, loc.y)):
+                        if(not ctx.IS_in_map(loc)):
                             continue
                         # ct.draw_indicator_line(loc, pos, 255, 255, 255)
                         bid = ct.get_tile_building_id(loc)
@@ -626,4 +659,3 @@ class BldRush():
         if(bteam != ct.get_team()):
             if(ct.can_fire(ct.get_position())):
                 ct.fire(ct.get_position())
-
