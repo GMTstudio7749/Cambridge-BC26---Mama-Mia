@@ -1,6 +1,5 @@
 from cambc import Controller, Position, Direction
 from bld_context import ctx
-from defendable_info import DefendableInfo
 from utils import *
 
 class BldGuard():
@@ -20,110 +19,14 @@ class BldGuard():
         self.Target_Heal_Pos = Position(-1, -1)
         
         # Hotspot
-        self.HS_Step_From_Core = 3
-        self.HS_Accept_Range   = 3
-        self.HS_Visit_Turn = 50
+        self.HS_Step_From_Core = 10
+        self.HS_Accept_Range   = 10
+        self.HS_Visit_Turn = 35
 
         self.Curr_Spot_Dir = Direction.CENTRE
         self.Spot_Target = Position(-1, -1)
         self.Spot_Turn = -1
 
-        self.defendables = []
-        self.defendable_target = Position(-1, -1)
-
-        self.ally_bots = {}
-        self.enemy_bots = {}
-
-    def GUARD_sense_nearby(self, ct):
-        self.ally_bots = {}
-        self.enemy_bots = {}
-
-        spread = []
-        spread2 = []
-        for bid in ct.get_nearby_units():
-            i = ct.get_position(bid) 
-            btype = ct.get_entity_type(bid)
-            bteam = ct.get_team(bid)
-            if(btype != EntityType.BUILDER_BOT or ct.get_id() == bid):
-                continue
-
-            if(bteam == ct.get_team()):
-                self.ally_bots[i] = 1
-                spread.append(i)
-            else:
-                self.enemy_bots[i] = 1
-                # spread2.append(i)
-
-        for pos in spread:
-            for dx in [-1, 0, 1]:
-                for dy in [-1, 0, 1]:
-                    nx = pos.x + dx
-                    ny = pos.y + dy
-                    newPos = Position(nx, ny)
-
-                    self.ally_bots[newPos] = self.ally_bots.get(newPos, 0) + 1
-        # for i in spread2:
-            # for dir in Dirs:
-                # pos = i.add(dir)
-                # self.enemy_bots[pos] = self.enemy_bots.get(pos, 0) + 1
-
-
-
-    def DEFENDABLE_update(self, ct):
-        for tile_pos in ct.get_nearby_tiles():
-            self.DEFENDABLE_status(ct, tile_pos)
-    
-    
-    def DEFENDABLE_status(self, ct: Controller, defendable_pos: Position):
-        if(not ct.is_in_vision(defendable_pos)): return
-        score = self.GET_defendable_info(ct, defendable_pos)
-        self.defendables[defendable_pos.x][defendable_pos.y].score = score
-
-    def GET_best_defendable_target(self, ct):
-        best_defendable = Position(-1, -1)
-        best_score = 0
-        cur = ct.get_position()
-
-        for dx in range(-15, 16):
-            for dy in range(-15, 16):
-                x = cur.x + dx
-                y = cur.y + dy
-
-                if not ctx.explore.IS_in_map(x, y):
-                    continue
-
-                defendable = self.defendables[x][y]
-
-                score = defendable.score
-                if score > best_score:
-                    best_defendable, best_score = defendable.pos, score
-        print(best_score)
-        if(best_score > 0):
-            return best_defendable
-        return Position(-1, -1)
-
-    def GET_defendable_info(self, ct, defendable_pos):
-        env = ct.get_tile_env(defendable_pos)
-        bid = ct.get_tile_building_id(defendable_pos)
-        btype = ct.get_entity_type(bid)
-        bteam = ct.get_team(bid)
-        bhp = ct.get_hp(bid)
-        bmaxhp = ct.get_max_hp(bid)
-
-        score = 0
-
-        score -= self.ally_bots.get(defendable_pos, 0) * 3
-        score += ((bmaxhp - bhp) / bmaxhp) * 5
-        score += self.enemy_bots.get(defendable_pos, 0) * 2
-        # score -= ct.get_position().distance_squared(defendable_pos) ** 0.5 * 0.1
-        score += abs(4 - ctx.CORE_POS.distance_squared(defendable_pos) ** 0.5 * 0.5 )
-        
-        if(btype == EntityType.CONVEYOR or btype == EntityType.BRIDGE) and bhp < bmaxhp:
-            score += 2
-        if(bhp < bmaxhp or self.enemy_bots.get(defendable_pos, 0) > 0):
-            return score
-        return 0
-    
     #region ----- GET function -----
     def GET_next_hotspot(self, step_from_core: int):
         """Get the next hotspot for guardian, depends on step from core"""
@@ -157,7 +60,7 @@ class BldGuard():
             type = ct.get_entity_type(ID)
             if type == EntityType.BUILDER_BOT:
                 en_pos = ct.get_position(ID)
-                if dis_to_core > 1:
+                if dis_to_core > 0:
                     core_dis = en_pos.distance_squared(ctx.CORE_POS)
                     if core_dis > dis_to_core: continue
 
@@ -193,26 +96,17 @@ class BldGuard():
     #endregion
 
     #region ----- Guard GENERAL -----
-    def GUARD_setup(self, ct):
+    def GUARD_setup(self):
         """Setup for Guardian builder"""
         self.Curr_Spot_Dir = ctx.CORE_DIR
-        self.HS_Step_From_Core = 10
-
-        width = ct.get_map_width()
-        height = ct.get_map_height()
-        self.defendables = [
-            [DefendableInfo(Position(i, j), 0) for j in range(height)]
-            for i in range(width)
-        ]
+        self.HS_Step_From_Core = (Dirs.index(ctx.CORE_DIR) * 4) % 30 + 5
 
     def GUARD_update_info(self, ct: Controller):
         """Update status for Guardian builder"""
         if ct.is_in_vision(ctx.CORE_POS):
             self.Core_HP = ct.get_hp(ctx.CORE_ID)
         self.follow_enemy_turn = (self.follow_enemy_turn + 40 + 1) % 100 - 40
-        
-        self.DEFENDABLE_update(ct)
-
+    
     def GUARD_update_hotspot(self):
         """Update new hotspot for guardian"""
         pass
@@ -254,14 +148,14 @@ class BldGuard():
         my_pos = ct.get_position()
         cur_dis = my_pos.distance_squared(self.Spot_Target)
         if cur_dis <= self.HS_Accept_Range or self.Spot_Turn < 1:
-            self.HS_Step_From_Core = (self.HS_Step_From_Core ) % 20
-            # self.HS_Accept_Range = self.HS_Step_From_Core
+            self.HS_Step_From_Core = (self.HS_Step_From_Core + 14) % 30 + 5
+            self.HS_Accept_Range = self.HS_Step_From_Core
             self.Spot_Turn = self.HS_Visit_Turn
             self.Spot_Target = self.GET_next_hotspot(self.HS_Step_From_Core)
 
         self.Spot_Turn = self.Spot_Turn - 1
         if ct.get_move_cooldown() == 0:
-            ctx.bugnav.MOVE_to_target(ct, self.Spot_Target, True, 2, 2, -2)
+            ctx.bugnav.MOVE_to_target(ct, self.Spot_Target, True)
 
     #endregion
 
@@ -269,56 +163,41 @@ class BldGuard():
     def GUARD_wandering(self, ct: Controller):
         """Guardian move to hotspot / wandering for work function"""
 
-        # tmp = self.GET_worst_convey(ct)
-        # if tmp != Position(-1, -1):
-        #     self.Target_Heal_Pos = tmp
-        #     self.GUARD_target_heal(ct, self.Target_Heal_Pos)
-        # if self.Target_Heal_Pos != Position(-1, -1) and ct.is_in_vision(self.Target_Heal_Pos):
-        #     ID = ct.get_tile_building_id(self.Target_Heal_Pos)
-        #     if ct.get_hp(ID) + GameConstants.HEAL_AMOUNT > ct.get_max_hp(ID):
-        #         self.Target_Heal_Pos = Position(-1, -1)
+        tmp = self.GET_worst_convey(ct)
+        if tmp != Position(-1, -1):
+            self.Target_Heal_Pos = tmp
+            self.GUARD_target_heal(ct, self.Target_Heal_Pos)
+        if self.Target_Heal_Pos != Position(-1, -1) and ct.is_in_vision(self.Target_Heal_Pos):
+            ID = ct.get_tile_building_id(self.Target_Heal_Pos)
+            if ct.get_hp(ID) + GameConstants.HEAL_AMOUNT > ct.get_max_hp(ID):
+                self.Target_Heal_Pos = Position(-1, -1)
         
-        # # Follow enemy robot if in danger zone
-        # if self.follow_enemy_ID == -1:
-        #     self.follow_enemy_ID = self.GET_best_enemy_bot_ID(ct, 10, self.CORE_ZONE)
-        # if self.Target_Heal_Pos != Position(-1, -1):
-        #     self.follow_enemy_ID = -1
-        # if self.follow_enemy_ID > -1:
-        #     if(self.follow_enemy_ID not in ct.get_nearby_units()):
-        #         self.follow_enemy_ID = -1
-        #     else:
-        #         en_pos = ct.get_position(self.follow_enemy_ID)
-        #         zone_dis = en_pos.distance_squared(ctx.CORE_POS)
-        #         my_dis = en_pos.distance_squared(ct.get_position())
-        #         ok = True
-        #         if zone_dis > self.CORE_ZONE:
-        #             self.follow_enemy_ID = -1
-        #             ok = False
-        #         if ok:
-        #             if my_dis > 2 and ct.get_move_cooldown() == 0:
-        #                 ctx.bugnav.MOVE_to_target(ct, en_pos, False)
-        #                 new_dis = en_pos.distance_squared(ct.get_position())
-        #                 if new_dis > 10:
-        #                     self.follow_enemy_ID = -1
-        #                     return
+        # Follow enemy robot if in danger zone
+        if self.follow_enemy_ID == -1:
+            self.follow_enemy_ID = self.GET_best_enemy_bot_ID(ct, 10, self.CORE_ZONE)
+        if self.Target_Heal_Pos != Position(-1, -1):
+            self.follow_enemy_ID = -1
+        if self.follow_enemy_ID > -1:
+            en_pos = ct.get_position(self.follow_enemy_ID)
+            zone_dis = en_pos.distance_squared(ctx.CORE_POS)
+            my_dis = en_pos.distance_squared(ct.get_position())
+            ok = True
+            if zone_dis > self.CORE_ZONE:
+                self.follow_enemy_ID = -1
+                ok = False
+            if ok:
+                if my_dis > 2 and ct.get_move_cooldown() == 0:
+                    ctx.bugnav.MOVE_to_target(ct, en_pos, False)
+                    new_dis = en_pos.distance_squared(ct.get_position())
+                    if new_dis > 10:
+                        self.follow_enemy_ID = -1
+                        return
 
-
-        # if self.follow_enemy_ID == -1 and self.Target_Heal_Pos == Position(-1, -1):
+        if self.follow_enemy_ID == -1 and self.Target_Heal_Pos == Position(-1, -1):
             # Visiting hotspot
-            # if ct.get_move_cooldown() == 0:
-                # self.GUARD_visit_hotspot(ct)
-
-        self.defendable_target = self.GET_best_defendable_target(ct)
-        if(self.defendable_target == Position(-1, -1)):
             if ct.get_move_cooldown() == 0:
                 self.GUARD_visit_hotspot(ct)
-        else:
-            ct.draw_indicator_line(ct.get_position(), self.defendable_target, 255, 0, 0)
-            
-            # if(not ctx.bugnav.trymoveIntoRangeBool(ct, self.defendable_target, 2,True)):
-                # ctx.bugnav.safeFuzzyMoveLocBool(ct, self.defendable_target)
-            if(ct.get_position().distance_squared(self.defendable_target) > 2):
-                ctx.bugnav.MOVE_to_target(ct, self.defendable_target, False, 0, 0, 0)
+    
     def GUARD_target_heal(self, ct: Controller, heal_pos: Position):
         """Guardian state to target pos that need heal"""
         if heal_pos == Position(-1, -1): return
@@ -336,15 +215,11 @@ class BldGuard():
         """Main GUARDIAN builder function"""
         if not self.setup:
             self.setup = True
-            self.GUARD_setup(ct)
+            self.GUARD_setup()
 
         # UPDATE
         ctx.ORE_update(ct)
-        self.GUARD_sense_nearby(ct)
         self.GUARD_update_info(ct)
-
-        if(ct.get_current_round() < 20):
-            return
 
         # WORK
         self.GUARD_wandering(ct)
@@ -353,4 +228,3 @@ class BldGuard():
         self.DEBUG_guard_info(ct)
         self.DEBUG_guard_hotspot(ct)
         # ctx.ORE_debug()
-
