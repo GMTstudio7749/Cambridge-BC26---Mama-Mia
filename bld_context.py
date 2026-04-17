@@ -20,22 +20,6 @@ class BldContext:
         self.Cur_Round = -1
         self.Turn_Count = 0
         self.Ores: dict[tuple[int, int], OreInfo] = {}
-        self.Ores_Count = 0 # NO NEED FOR THIS FUKING SHIT
-
-        # RESOURCE
-        self.Glob_Tit = -1
-        self.Glob_Anx = -1
-
-        # COST
-        self.Builder_Cost = -1
-        self.Harvest_Cost = -1
-        self.Foundry_Cost = -1
-        self.Convey_Cost = -1
-        self.Gunner_Cost = -1
-        self.Launcher_Cost = -1
-        self.Road_Cost = -1
-        self.Barrier_Cost = -1
-        self.Spawn_Limit = -1
 
     #region ----- ORE scan func -----
     def ORE_update(self, ct: Controller):
@@ -73,7 +57,6 @@ class BldContext:
             if not linked_core is None: ore.linked_core = linked_core
         # NEW
         else:
-            self.Ores_Count = self.Ores_Count + 1
             ore = OreInfo(ore_pos, env)
             ore.mark, ore.barr = mval, barr
             if not harv is None: ore.harv = harv
@@ -92,7 +75,6 @@ class BldContext:
     def ORE_debug(self):
         """Print all ores status for debug purpose"""
         print("\n=== ORE STAT ===")
-        print(f"[COUNT]: {self.Ores_Count}")
         for ore in self.Ores.values():
             print(ore)
             print("---------------")
@@ -101,21 +83,8 @@ class BldContext:
     #region ----- UPDATE func -----
     def UPD_round_turn(self, ct: Controller):
         """Update info about global round and local turn count"""
-        ctx.Cur_Round = ct.get_current_round()
-        ctx.Turn_Count = ctx.Turn_Count + 1
-
-    def UPD_resource_cost(self, ct: Controller):
-        """Builder update info about global values"""
-        ctx.Glob_Tit, ctx.Glob_Anx = ct.get_global_resources()
-
-        ctx.Builder_Cost, tmp = ct.get_builder_bot_cost()
-        ctx.Harvest_Cost, tmp = ct.get_harvester_cost()
-        ctx.Foundry_Cost, tmp = ct.get_foundry_cost()
-        ctx.Convey_Cost, tmp = ct.get_conveyor_cost()
-        ctx.Gunner_Cost, tmp = ct.get_gunner_cost()
-        ctx.Launcher_Cost, tmp = ct.get_launcher_cost()
-        ctx.Road_Cost, tmp = ct.get_road_cost()
-        ctx.Barrier_Cost, tmp = ct.get_barrier_cost()
+        self.Cur_Round = ct.get_current_round()
+        self.Turn_Count = self.Turn_Count + 1
     #endregion
 
     #region ----- IS func -----
@@ -129,6 +98,10 @@ class BldContext:
     #endregion
 
     #region ----- GET func -----
+    def GET_step(self, pos_a: Position, pos_b: Position):
+        """Get Manhattan distance between A and B (sum of dx + dy)"""
+        return abs(pos_a.x - pos_b.x) + abs(pos_a.y - pos_b.y)
+    
     def GET_ally_core_pos_id(self, ct: Controller):
         """Get our team core position & ID (vision only)\n
         Return Position(-1, -1), -1 if fails"""
@@ -141,6 +114,17 @@ class BldContext:
                 return ct.get_position(id), id
         return Position(-1, -1), -1
     
+    def GET_tile_building(self, ct: Controller, tile_pos: Position):
+        """Get the tile building TYPE & TEAM\n
+           If out of vision / found nothing -> return EntityType.MARKER, MY_TEAM"""
+        none = tuple[EntityType.MARKER, self.MY_TEAM]
+        if not self.IS_in_map(tile_pos): return none
+        if not ct.is_in_vision(tile_pos): return none
+
+        ID = ct.get_tile_building_id(tile_pos)
+        if ID is None: return none
+        return ct.get_entity_type(ID), ct.get_team(ID)
+        
     def GET_marker_val(self, ct: Controller, tile_pos: Position):
         """Get the value of the marker placed on a position\n
            If there is no marker / out of vision / enemy -> -1"""
@@ -244,37 +228,27 @@ class BldContext:
     def CHECK_ore_linked_core(self, ct: Controller, ore_pos: Position):
         """Check if an ore is linked back core, depends on conveyors nearby\n
            Return None if dis > 13"""
-        if ore_pos == Position(-1, -1): return True
-        if ore_pos.distance_squared(ct.get_position()) > 13: return None
-
         # Side check
         dxy = [[-1, 0], [1, 0], [0, -1], [0, 1]]
         for dx, dy in dxy:
             check_pos = Position(ore_pos.x + dx, ore_pos.y + dy)
             if not self.IS_in_map(check_pos): continue
+            if not ct.is_in_vision(check_pos): continue
 
             # Building
             ID = ct.get_tile_building_id(check_pos)
             if ID is None: continue
-
             type = ct.get_entity_type(ID)
             if ct.get_team(ID) == self.MY_TEAM:
                 if type in CONVEY_TYPE:
                     return True
+                
+        # Decide
+        if ore_pos.distance_squared(ct.get_position()) > 13: return None
         return False
     #endregion
     
     #region ----- DEBUG func -----
-    def DEBUG_global_cost(self):
-        """Print current costs for debug purpose"""
-        print("\n== Global Cost ==")
-        print("Conveyor:", ctx.Convey_Cost)
-        print("Builder:", ctx.Builder_Cost)
-        print("Harvester:", ctx.Harvest_Cost)
-        print("Foundry:", ctx.Foundry_Cost)
-        print("Gunner:", ctx.Gunner_Cost)
-        print("Road:", ctx.Road_Cost)
-        print("===================\n")
     #endregion
 
 ctx = BldContext()

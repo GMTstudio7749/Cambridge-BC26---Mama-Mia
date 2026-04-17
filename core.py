@@ -19,16 +19,21 @@ class Core:
         self.EXPAND_ROUND = 200
         self.Spawn_Dir_Idx = 0
 
-        # Resource
+        # RESOURCE
         self.Glob_Tit = -1
         self.Glob_Anx = -1
 
-        # Cost
+        # COST
         self.Builder_Cost = -1
         self.Harvest_Cost = -1
         self.Foundry_Cost = -1
-        self.Gunner_Cost = -1
+        self.Convey_Cost = -1
         self.Bridge_Cost = -1
+        self.Gunner_Cost = -1
+        self.Launcher_Cost = -1
+        self.Road_Cost = -1
+        self.Barrier_Cost = -1
+        self.Spawn_Limit = -1
 
     #region ----- Core GENERAL -----
     def CORE_setup(self, ct: Controller):
@@ -49,17 +54,16 @@ class Core:
         self.Cur_Round = ct.get_current_round()
 
         self.Glob_Tit, self.Glob_Anx = ct.get_global_resources()
+
         self.Builder_Cost, tmp = ct.get_builder_bot_cost()
         self.Harvest_Cost, tmp = ct.get_harvester_cost()
-        self.Gunner_Cost, tmp = ct.get_gunner_cost()
         self.Foundry_Cost, tmp = ct.get_foundry_cost()
+        self.Convey_Cost, tmp = ct.get_conveyor_cost()
         self.Bridge_Cost, tmp = ct.get_bridge_cost()
-        '''self.Spawn_Limit = (
-            50*self.Road_Cost +
-            7*self.Convey_Cost +
-            self.Gunner_Cost +
-            3*self.Harvest_Cost
-        )'''
+        self.Gunner_Cost, tmp = ct.get_gunner_cost()
+        self.Launcher_Cost, tmp = ct.get_launcher_cost()
+        self.Road_Cost, tmp = ct.get_road_cost()
+        self.Barrier_Cost, tmp = ct.get_barrier_cost()
 
     def CORE_spawn_builder(self, ct: Controller, spawn_dir: Direction):
         """Core spawn builder depends on spawn dir, return bool value"""
@@ -82,12 +86,18 @@ class Core:
         print(f"ECO dir: {self.Open_Eco_Dir}")
         print(f"GUARD dir: {self.Open_Guard_Dir}")
 
+    def DEBUG_global_cost(self):
+        """Print current costs for debug purpose"""
         print("\n== Global Cost ==")
         print("Builder:", self.Builder_Cost)
         print("Harvester:", self.Harvest_Cost)
+        print("Conveyor:", self.Convey_Cost)
+        print("Bridge:", self.Bridge_Cost)
         print("Foundry:", self.Foundry_Cost)
         print("Gunner:", self.Gunner_Cost)
-        print("Bridge:", self.Bridge_Cost)
+        print("Launcher:", self.Launcher_Cost)
+        print("Road:", self.Road_Cost)
+        print("===================\n")
 
     #region --- Core STATE ---
     def CORE_opening(self, ct: Controller):
@@ -114,8 +124,9 @@ class Core:
         
         if self.Cur_Round % 50 == 0:
             if self.Glob_Tit > self.Builder_Cost + 300:
-                if ct.get_unit_count() < 20 and ct.get_unit_count() % 2 == 0:
+                if ct.get_unit_count() < 30 and ct.get_unit_count() % 2 == 0:
                     self.CORE_spawn_builder(ct, Direction.CENTRE)
+
                 else:
                     self.CORE_spawn_builder(ct, Dirs[self.Spawn_Dir_Idx])
                     self.Spawn_Dir_Idx = (self.Spawn_Dir_Idx + 3) % 8
@@ -141,4 +152,8 @@ class Core:
 
         if self.state == "EXPANDING":
             self.CORE_expanding(ct)
-        
+            pass
+
+        # DEBUG
+        # self.DEBUG_core()
+        # self.DEBUG_global_cost()

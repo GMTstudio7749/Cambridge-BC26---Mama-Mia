@@ -1,7 +1,15 @@
 from cambc import Controller, EntityType, Position
 from bld_context import ctx
 from utils import *
-from attackable_info import AttackableInfo
+
+class AttackableInfo:
+    __slots__ = ("pos", "score", "type", "ignore")
+
+    def __init__(self, pos, score, type):
+        self.pos = pos
+        self.score = score
+        self.type = type
+        self.ignore = 0
 
 class BldRush():
     def __init__(self):
@@ -21,6 +29,7 @@ class BldRush():
         
         self.place_marker_pos = []
         self.tried_place_marker = []
+        self.protected_map = {}
 
         self.bots_pos = {}
         self.return_home = False
@@ -29,9 +38,21 @@ class BldRush():
         self.closest_harvester = Position(-1, -1)
         self.harvester_hp = 0
 
+        self.hijack_state = "INIT"
+        self.hijack_target_pos = Position(-1, -1)
+        self.hijack_previous_pos = Position(-1, -1)
+
+        self.forbidden_tiles = set()
+        self.traced_gunners = set()
+
+        self.Glob_Tit = -1
+
 
         self.current_max_attack_turn_count = 0
-
+    def RUSH_mark_position(self, pos: Position, is_protected: bool):
+        self.protected_map[(pos.x, pos.y)] = is_protected
+    def RUSH_can_destroy(self, pos: Position):
+        return not self.protected_map.get((pos.x, pos.y), False)
     def RUSH_sense_nearby(self, ct):
         self.bots_pos = {}
         spread = [] 
@@ -239,7 +260,7 @@ class BldRush():
                 return
             self.tried_place_marker[index] = True
 
-    def RUSH_attack(self, ct):
+    def RUSH_attack(self, ct: Controller):
         if(self.enemy_core_pos == Position(-1, -1)):
             for bid in ct.get_nearby_buildings():
                 btype = ct.get_entity_type(bid)
@@ -259,13 +280,60 @@ class BldRush():
             # print(self.attackables[i.x][i.y].pos, self.attackables[i.x][i.y].score)
         if self.target_attackable == Position(-1, -1):
             ctx.bugnav.MOVE_to_target(ct, self.enemy_core_pos, False, 0, 0, 2)
+        for bid in ct.get_nearby_buildings():
+            if ct.get_team(bid) != ct.get_team() and ct.get_entity_type(bid) in [EntityType.GUNNER, EntityType.SENTINEL]:
+                bpos = ct.get_position(bid)
+                for d in Direction:
+                    check_pos = bpos.add(d)  
+                    if ct.is_in_vision(check_pos):
+                        target_bid = ct.get_tile_building_id(check_pos)
+                        if target_bid is not None and ct.get_team(target_bid) != ct.get_team():
+                            btype = ct.get_entity_type(target_bid)
+                            if btype in [EntityType.CONVEYOR, EntityType.BRIDGE]:
+                                self.RUSH_mark_position(check_pos, True)
         if(self.target_attackable != Position(-1, -1)):
             self.attack_turn_count = self.current_max_attack_turn_count
             if(self.attackables[self.target_attackable.x][self.target_attackable.y].type == ATTACK_TYPE.NORMAL):
                 self.state = "ATTACK_TARGET_NORMAL"
 
+    def RUSH_trace_from_gunner(self, ct: Controller, gunner_pos: Position, gunner_id: int):
+        queue = [gunner_pos]
+        visited = set()
+        visited.add((gunner_pos.x, gunner_pos.y))
+        while len(queue) > 0:
+            current_pos = queue.pop(0)
+            for d in [Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST]:
+                next_pos = current_pos.add(d)                
+                if (next_pos.x, next_pos.y) in visited or not ct.is_in_vision(next_pos):
+                    continue                         
+                bid = ct.get_tile_building_id(next_pos)
+                if bid is not None and ct.get_team(bid) != ct.get_team():
+                    btype = ct.get_entity_type(bid)
+                    lead_to_gunner = False
+                    if btype == EntityType.CONVEYOR:
+                        conveyor_dir = ct.get_direction(bid)
+                        if next_pos.add(conveyor_dir) == current_pos:
+                            lead_to_gunner = True
+                    elif btype == EntityType.BRIDGE:
+                        if ct.get_bridge_target(bid) == current_pos:
+                            lead_to_gunner = True
+                    if lead_to_gunner == True:
+                        visited.add((next_pos.x, next_pos.y))
+                        self.forbidden_tiles.add((next_pos.x, next_pos.y))
+                        queue.append(next_pos)
+                    
+        self.traced_gunners.add(gunner_id)
+    
+    def RUSH_update_protection(self, ct: Controller):
+        for bid in ct.get_nearby_buildings():
+            if ct.get_team(bid) == ct.get_team() and ct.get_entity_type(bid) == EntityType.GUNNER:
+                if bid not in self.traced_gunners:
+                    gunner_pos = ct.get_position(bid)
+                    if gunner_pos.distance_squared(self.enemy_core_pos) < 64:
+                        self.RUSH_trace_from_gunner(ct, gunner_pos, bid)
 
-    def BUILD_defend_launcher(self, ct, loc):
+
+    def BUILD_defend_launcher(self, ct: Controller, loc: Position):
         if(ct.get_action_cooldown() > 0):
             return True
 
@@ -311,7 +379,7 @@ class BldRush():
         return True
             
 
-    def RUSH_attack_target_normal(self, ct):
+    def RUSH_attack_target_normal(self, ct: Controller):
         if(self.attackables[self.target_attackable.x][self.target_attackable.y].type == ATTACK_TYPE.NORMAL):
             if(self.MODE == "HARASS" or self.MODE == "TRACE"):
                 self.attackables[self.target_attackable.x][self.target_attackable.y].ignore = 40
@@ -350,7 +418,13 @@ class BldRush():
                 if(ct.can_build_gunner(self.target_attackable, gunnerDir)):
                     ct.build_gunner(self.target_attackable, gunnerDir)
                     self.state = "ATTACK"
-                    return 
+                    return
+            else:
+                sentinelDir = self.target_attackable.direction_to(self.enemy_core_pos)
+                if ct.can_build_sentinel(self.target_attackable, sentinelDir):
+                    ct.build_sentinel(self.target_attackable, sentinelDir)
+                    self.state = "ATTACK"
+                    return
             if(ct.can_build_barrier(self.target_attackable)):
                 ct.build_barrier(self.target_attackable)
                 self.state = "ATTACK"
@@ -443,8 +517,9 @@ class BldRush():
             #                 ct.destroy(pos)
             #             if(ct.can_build_barrier(pos)):
             #                 ct.build_barrier(pos)
-            if(ct.can_fire(self.target_attackable)):
+            if(ct.can_fire(self.target_attackable) and self.target_attackable not in self.forbidden_tiles):
                 ct.fire(self.target_attackable)
+                
         else:
             self.attack_turn_count = self.current_max_attack_turn_count
         
@@ -455,9 +530,11 @@ class BldRush():
 
         else:
             ctx.bugnav.MOVE_to_target(ct, self.target_attackable, False, 0, 0, 2)
+    
     def RUSH_get_closest_enemy_harvester_to_core(self, ct: Controller):
-        if ct.get_position().distance_squared(self.enemy_core_pos) <= 2:
+        if ct.get_position().distance_squared(self.enemy_core_pos) > 2:
             ctx.bugnav.MOVE_to_target(ct, self.enemy_core_pos, False, 0, 0, 2)
+            return
         enemy_building = ct.get_nearby_buildings()
         min_dist = 676767
         for bid in enemy_building:
@@ -466,21 +543,46 @@ class BldRush():
             if(bteam == ct.get_team()):
                 pass
             else:
-                if bid == EntityType.HARVESTER:
+                if ct.get_entity_type(bid) == EntityType.MARKER:
+                    value = ct.get_marker_value(bid)
+                    if value == 67:
+                        self.closest_harvester = bpos
+                        dist_to_core = min_dist
+                        break
+                elif ct.get_entity_type(bid) == EntityType.HARVESTER:
                     dist_to_core = self.enemy_core_pos.distance_squared(bpos)
                     if dist_to_core < min_dist:
-                        dist_to_core = min_dist
+                        min_dist = dist_to_core
                         self.closest_harvester = bpos
+        if min_dist == 676767:
+            max_dist = 0
+            #If we can't find any harvester go find the farthest conveyor from core(less defense ig)
+            for bid in enemy_building:
+                bteam = ct.get_team(bid)
+                bpos = ct.get_position(bid)
+                if bteam == ct.get_team():
+                    pass
+                else:
+                    if ct.get_entity_type(bid) == EntityType.CONVEYOR or ct.get_entity_type(bid) == EntityType.BRIDGE:
+                        dist_to_core = self.enemy_core_pos.distance_squared(bpos)
+                        if dist_to_core > max_dist:
+                            max_dist = dist_to_core
+                            self.closest_harvester = bpos
     def RUSH_target_enemy_nearest_harvester(self, ct: Controller):
         self.RUSH_get_closest_enemy_harvester_to_core(ct)
-        if ct.get_position().distance_squared(self.closest_harvester) <= 2:
+        if ct.get_position().distance_squared(self.closest_harvester) > 2:
             ctx.bugnav.MOVE_to_target(ct, self.closest_harvester, False, 0, 0, 2)
-        self.harvester_hp = ct.get_hp(ct.get_tile_building_id(self.closest_harvester))
-        while self.harvester_hp > 0:
-            if ct.can_fire(self.closest_harvester):
+            return
+        bid = ct.get_tile_building_id(self.closest_harvester)
+        
+        if bid is not None and ct.get_team(bid) != ct.get_team():
+            if ct.can_fire(self.closest_harvester) and self.closest_harvester not in self.forbidden_tiles:
                 ct.fire(self.closest_harvester)
-                self.harvester_hp = ct.get_hp(ct.get_tile_building_id(self.closest_harvester))
+        else:
+            if ct.can_place_marker(self.closest_harvester):
+                ct.place_marker(self.closest_harvester, 67)
         #Placing turrests or sth after destroy the enemy nearest harvester
+
 
 
 
@@ -562,12 +664,13 @@ class BldRush():
             self.state = "ATTACK"
 
         self.RUSH_sense_nearby(ct)
+        self.RUSH_update_protection(ct)
 
         if(ct.get_hp() < ct.get_max_hp() ):
             if(ct.can_heal(ct.get_position())):
                 ct.heal(ct.get_position())
 
-        if(ct.get_current_round() > 0):
+        if(ct.get_current_round() > 100):
             self.MODE = "CONCENTRATE"
 
         if(self.MODE == "CONCENTRATE"):
@@ -584,7 +687,7 @@ class BldRush():
             self.RUSH_attack_target_normal(ct)
         #If the rush don't work, change state for everyone to target enemy nearest harvestor
         elif(self.state == "RUSH_FAIL"):
-            self.RUSH_target_enemy_nearest_harvester(ct);
+            self.RUSH_target_enemy_nearest_harvester(ct)
         elif(self.state == "BACK_TO_CORE"):
             self.RUSH_back_to_core(ct)
             
@@ -592,13 +695,14 @@ class BldRush():
 
         self.RUSH_invariant_action(ct)
 
-    def RUSH_invariant_action(self, ct):
+    def RUSH_invariant_action(self, ct: Controller):
+        self.Glob_Tit = ct.get_global_resources()
 
 
         if(self.enemy_core_pos != Position(-1, -1)):
             if(ct.get_position().distance_squared(self.enemy_core_pos) < 8):
                 for dir in All_Dirs:
-                    if(ctx.Glob_Tit < ctx.Convey_Cost):
+                    if(self.Glob_Tit < ct.get_conveyor_cost()):
                         break
                     pos = ct.get_position().add(dir)
                     if(not ctx.IS_in_map(pos)):
@@ -621,7 +725,7 @@ class BldRush():
                         if(bteam == ct.get_team() and btype == EntityType.LAUNCHER):
                             gotLauncher = True
 
-                    if(not gotLauncher and ctx.Glob_Tit > 200):
+                    if(not gotLauncher):
                         if(ct.can_build_launcher(pos)):
                             ct.build_launcher(pos)
                             break
@@ -637,7 +741,9 @@ class BldRush():
                         break
 
         if(self.target_attackable != Position(-1, -1) and self.state == "ATTACK_TARGET_NORMAL" and self.MODE == "CONCENTRATE"):
-            if(ctx.Glob_Tit > ctx.Barrier_Cost):
+            if(self.Glob_Tit > ct.get_barrier_cost()):
+                
+                
                 if(self.target_attackable == ct.get_position()):
                     for i in Dirs:
                         loc = ct.get_position().add(i)
@@ -655,5 +761,12 @@ class BldRush():
         btype = ct.get_entity_type(bid)
         bteam = ct.get_team(bid)
         if(bteam != ct.get_team()):
-            if(ct.can_fire(ct.get_position())):
+            #conveyorDir = Direction.SOUTH
+            #if ct.get_entity_type(bid) == EntityType.CONVEYOR:
+                #conveyorDir = ct.get_direction(bid)
+                #if(ct.can_fire(ct.get_position())):
+                    #ct.fire(ct.get_position())
+                #if ct.can_build_conveyor(ct.get_position(), conveyorDir.opposite()):
+                    #ct.build_conveyor(ct.get_position(), conveyorDir.opposite())
+            if(ct.can_fire(ct.get_position()) and ct.get_position() not in self.forbidden_tiles):
                 ct.fire(ct.get_position())

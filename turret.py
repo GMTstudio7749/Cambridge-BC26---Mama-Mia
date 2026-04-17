@@ -1,6 +1,7 @@
 from cambc import Controller, Position, Team
 from utils import *
 from global_func import *
+from functools import cmp_to_key
 
 class Turret():
 	def __init__(self):
@@ -8,6 +9,8 @@ class Turret():
 		self.my_pos = Position(-1, -1)
 		self.my_type : EntityType
 		self.MY_TEAM : Team
+		self.non_target : set[int] = set()
+		self.assignable_as_non_target = [EntityType.CONVEYOR, EntityType.ARMOURED_CONVEYOR, EntityType.BRIDGE]
 
 		# Information
 		self.targetable = []
@@ -21,6 +24,43 @@ class Turret():
 	def TURRET_update(self, ct: Controller):
 		"""Turret update info about vision entity,..."""
 		self.targetable = ct.get_attackable_tiles()
+		for id in ct.get_nearby_entities() :
+			if ct.get_team(id) == self.MY_TEAM or ct.get_entity_type(id) not in self.assignable_as_non_target or id in self.non_target :
+				continue
+			if ct.get_entity_type(id) == EntityType.BRIDGE :
+				pos = ct.get_bridge_target(id)
+				target_id = None
+				if ct.is_in_vision(pos) :
+					target_id = ct.get_tile_building_id(pos)
+				if target_id is None or target_id in self.non_target or ct.get_team(target_id) == self.MY_TEAM :
+					self.assign_non_hostile(id,ct)
+
+	def assign_non_hostile( self, id : int, ct : Controller ) :
+		if id in self.non_target :
+			return
+		self.non_target.add(id)
+		pos = ct.get_position(id)
+		next_id = None
+		if ct.is_in_vision(pos.add(Direction.NORTH)) :
+			next_id = ct.get_tile_building_id(pos.add(Direction.NORTH))
+		if next_id is not None and next_id in self.assignable_as_non_target and ct.get_direction(next_id) == Direction.SOUTH and ct.get_team(next_id) == self.MY_TEAM :
+			self.assign_non_hostile(next_id, ct)
+		next_id = None
+		if ct.is_in_vision(pos.add(Direction.SOUTH)) :
+			next_id = ct.get_tile_building_id(pos.add(Direction.SOUTH))
+		if next_id is not None and next_id in self.assignable_as_non_target and ct.get_direction(next_id) == Direction.NORTH and ct.get_team(next_id) == self.MY_TEAM :
+			self.assign_non_hostile(next_id, ct)
+		next_id = None
+		if ct.is_in_vision(pos.add(Direction.EAST)) :
+			next_id = ct.get_tile_building_id(pos.add(Direction.EAST))
+		if next_id is not None and next_id in self.assignable_as_non_target and ct.get_direction(next_id) == Direction.WEST and ct.get_team(next_id) == self.MY_TEAM :
+			self.assign_non_hostile(next_id, ct)
+		next_id = None
+		if ct.is_in_vision(pos.add(Direction.WEST)) :
+			next_id = ct.get_tile_building_id(pos.add(Direction.WEST))
+		if next_id is not None and next_id in self.assignable_as_non_target and ct.get_direction(next_id) == Direction.EAST and ct.get_team(next_id) == self.MY_TEAM :
+			self.assign_non_hostile(next_id, ct)
+
 
 	def TURRET_run(self, ct: Controller):
 		"""Main turret runner (all types)"""
@@ -48,7 +88,7 @@ class Turret():
 		enemy_turrets = [64,Position(-1,-1)]
 		enemy_builds = [64,Position(-1,-1)]
 		enemy_transports = [64,Position(-1,-1)]
-		enemy_core : Position = Position(-1, -1)
+		enemy_core = Position(-1,-1)
 		enemy_barriers = [64,Position(-1,-1)]
 		target_type : EntityType
 		target_hp : int
@@ -59,7 +99,7 @@ class Turret():
 			target = ct.get_tile_builder_bot_id(pos)
 			if target is None :
 				target = ct.get_tile_building_id(pos)
-			if target is None :
+			if target is None or target in self.non_target :
 				continue
 			target_hp = ct.get_hp(target)
 			target_pos = ct.get_position(target)
@@ -74,12 +114,12 @@ class Turret():
 					if target_hp < enemy_builds[0] :
 						enemy_builds[0] = target_hp
 						enemy_builds[1] = target_pos
+				elif target_type == EntityType.CORE :
+					enemy_core = target_pos
 				elif target_type == EntityType.CONVEYOR or target_type == EntityType.ARMOURED_CONVEYOR or target_type == EntityType.BRIDGE : #This category decides enemy's prosperity
 					if target_hp < enemy_transports[0] :
 						enemy_transports[0] = target_hp
 						enemy_transports[1] = target_pos
-				elif target_type == EntityType.CORE : #This category is not the most beneficial target for sentinel
-					enemy_core = target_pos
 				elif target_type == EntityType.BARRIER : #This category is mandatory to destroy
 					if target_hp < enemy_barriers[0] :
 						enemy_barriers[0] = target_hp
@@ -89,14 +129,12 @@ class Turret():
 			ct.fire(enemy_turrets[1])
 		elif enemy_builds[1] != Position(-1,-1):
 			ct.fire(enemy_builds[1])
-		elif enemy_transports[1] != Position(-1,-1):
-			ct.fire(enemy_transports[1])
 		elif enemy_core != Position(-1,-1) :
 			ct.fire(enemy_core)
+		elif enemy_transports[1] != Position(-1,-1):
+			ct.fire(enemy_transports[1])
 		elif enemy_barriers[1] != Position(-1,-1):
 			ct.fire(enemy_barriers[1])
-
-		
 
 	def LAUNCHER_run(self, ct : Controller) :
 		"""Main launcher runner"""
@@ -163,43 +201,27 @@ class Turret():
 			if d in throw_dir:
 				ct.launch(target, throw_dir[d][1])
 				return
-			
+	def gunner_custom_comp(self, x : Position, y : Position) :
+		return ( self.my_pos.distance_squared(x) < self.my_pos.distance_squared(y) ) - ( self.my_pos.distance_squared(x) > self.my_pos.distance_squared(y) )
 	def GUNNER_run(self, ct : Controller ) :
 		"""Main gunner runner"""
 		if ct.get_ammo_amount() == 0 :
 			return
 		
-		north_attackables = ct.get_attackable_tiles_from(self.my_pos,Direction.NORTH,self.my_type)
-		south_attackables = ct.get_attackable_tiles_from(self.my_pos,Direction.SOUTH,self.my_type)
-		east_attackables = ct.get_attackable_tiles_from(self.my_pos,Direction.EAST,self.my_type)
-		west_attackables = ct.get_attackable_tiles_from(self.my_pos,Direction.WEST,self.my_type)
-		northeast_attackables = ct.get_attackable_tiles_from(self.my_pos,Direction.NORTHEAST,self.my_type)
-		northwest_attackables = ct.get_attackable_tiles_from(self.my_pos,Direction.NORTHWEST,self.my_type)
-		southeast_attackables = ct.get_attackable_tiles_from(self.my_pos,Direction.SOUTHEAST,self.my_type)
-		southwest_attackables = ct.get_attackable_tiles_from(self.my_pos,Direction.SOUTHWEST,self.my_type)
+		north_attackables = sorted(ct.get_attackable_tiles_from(self.my_pos,Direction.NORTH,self.my_type),key = cmp_to_key(self.gunner_custom_comp))
+		south_attackables = sorted(ct.get_attackable_tiles_from(self.my_pos,Direction.SOUTH,self.my_type),key = cmp_to_key(self.gunner_custom_comp))
+		east_attackables = sorted(ct.get_attackable_tiles_from(self.my_pos,Direction.EAST,self.my_type),key = cmp_to_key(self.gunner_custom_comp))
+		west_attackables = sorted(ct.get_attackable_tiles_from(self.my_pos,Direction.WEST,self.my_type),key = cmp_to_key(self.gunner_custom_comp))
+		northeast_attackables = sorted(ct.get_attackable_tiles_from(self.my_pos,Direction.NORTHEAST,self.my_type),key = cmp_to_key(self.gunner_custom_comp))
+		northwest_attackables = sorted(ct.get_attackable_tiles_from(self.my_pos,Direction.NORTHWEST,self.my_type),key = cmp_to_key(self.gunner_custom_comp))
+		southeast_attackables = sorted(ct.get_attackable_tiles_from(self.my_pos,Direction.SOUTHEAST,self.my_type),key = cmp_to_key(self.gunner_custom_comp))
+		southwest_attackables = sorted(ct.get_attackable_tiles_from(self.my_pos,Direction.SOUTHWEST,self.my_type),key = cmp_to_key(self.gunner_custom_comp))
 		check_list = [
 			Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST, Direction.NORTHEAST, Direction.NORTHWEST, Direction.SOUTHEAST, Direction.SOUTHWEST
 			]
 		score : dict[int,list[Direction]] = {}
 		cur : list[Position]
-
-		rotation = Direction.CENTRE
-		if self.targetable == north_attackables :
-			rotation = Direction.NORTH
-		elif self.targetable == south_attackables :
-			rotation = Direction.SOUTH
-		elif self.targetable == east_attackables :
-			rotation = Direction.EAST
-		elif self.targetable == west_attackables :
-			rotation = Direction.WEST
-		elif self.targetable == northeast_attackables :
-			rotation = Direction.NORTHEAST
-		elif self.targetable == northwest_attackables :
-			rotation = Direction.NORTHWEST
-		elif self.targetable == southeast_attackables :
-			rotation = Direction.SOUTHEAST
-		elif self.targetable == southwest_attackables :
-			rotation = Direction.SOUTHWEST
+		rotation = ct.get_direction()
 
 		for dir in check_list :
 			if dir == Direction.NORTH :
@@ -218,16 +240,17 @@ class Turret():
 				cur = southeast_attackables
 			elif dir == Direction.SOUTHWEST :
 				cur = southwest_attackables
-			point = 0
 
+			point = 0
 			for pos in cur :
 				target = ct.get_tile_building_id(pos)
 				if target is None :
 					target = ct.get_tile_builder_bot_id(pos)
-				if target is None or ct.get_entity_type(target) == EntityType.MARKER :
+				if target is None or ct.get_entity_type(target) == EntityType.MARKER or target in self.non_target :
 					continue
-
 				target_type = ct.get_entity_type(target)
+				if ct.get_team(target) == self.MY_TEAM and target_type != EntityType.ROAD :
+					break
 				if target_type == EntityType.SENTINEL or target_type == EntityType.BREACH or target_type == EntityType.GUNNER or target_type == EntityType.LAUNCHER : #This category directly threatens ally units
 					point += 103
 				elif target_type == EntityType.CORE : #This category is the most beneficial target for this unit
@@ -238,6 +261,8 @@ class Turret():
 					point += 4
 				elif target_type == EntityType.BUILDER_BOT : #This category is movable and tanky, making it hard to destroy quickly and effectively
 					point += 1
+				elif target_type == EntityType.HARVESTER : #Prioritize not harming harvesters
+					break
 
 			if dir == rotation and point > 0 :
 				point += 51
@@ -247,10 +272,9 @@ class Turret():
 
 		point = list(score.keys())[-1]
 		desired_rotation = score[point][rand.gen()%len(score[point])]
-		if ct.can_rotate(desired_rotation):
-			if desired_rotation != rotation and point > 3 :
-				ct.rotate(desired_rotation)
-				self.TURRET_update(ct)
+		if desired_rotation != rotation and point > 3 and ct.can_rotate(desired_rotation) :
+			ct.rotate(desired_rotation)
+			self.TURRET_update(ct)
 
 		for pos in self.targetable :
 			target = ct.get_tile_builder_bot_id(pos)
@@ -258,6 +282,8 @@ class Turret():
 				target = ct.get_tile_building_id(pos)
 			if target is None or ct.get_entity_type(target) == EntityType.MARKER :
 				continue
-			if ct.can_fire(pos) :
+			if ct.get_team(target) == self.MY_TEAM and target_type != EntityType.ROAD :
+				return
+			if ct.can_fire(pos):
 				ct.fire(pos)
 				return

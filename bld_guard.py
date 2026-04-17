@@ -1,7 +1,13 @@
 from cambc import Controller, Position, Direction
 from bld_context import ctx
-from defendable_info import DefendableInfo
 from utils import *
+
+class DefendableInfo:
+    __slots__ = ("pos", "score", "type", "ignore")
+
+    def __init__(self, pos, score):
+        self.pos = pos
+        self.score = score
 
 class BldGuard():
     def __init__(self):
@@ -199,7 +205,7 @@ class BldGuard():
     def GUARD_setup(self, ct):
         """Setup for Guardian builder"""
         self.Curr_Spot_Dir = ctx.CORE_DIR
-        self.HS_Step_From_Core = 5
+        self.HS_Step_From_Core = 20
 
         width = ct.get_map_width()
         height = ct.get_map_height()
@@ -257,8 +263,8 @@ class BldGuard():
         my_pos = ct.get_position()
         cur_dis = my_pos.distance_squared(self.Spot_Target)
         if cur_dis <= self.HS_Accept_Range or self.Spot_Turn < 1:
-            self.HS_Step_From_Core = (self.HS_Step_From_Core ) % 20
-            # self.HS_Accept_Range = self.HS_Step_From_Core
+            self.HS_Step_From_Core = self.HS_Step_From_Core
+            self.HS_Accept_Range = self.HS_Step_From_Core
             self.Spot_Turn = self.HS_Visit_Turn
             self.Spot_Target = self.GET_next_hotspot(self.HS_Step_From_Core)
 
@@ -354,8 +360,8 @@ class BldGuard():
         self.GUARD_invariant_action(ct)
 
         # DEBUG
-        self.DEBUG_guard_info(ct)
-        self.DEBUG_guard_hotspot(ct)
+        # self.DEBUG_guard_info(ct)
+        # self.DEBUG_guard_hotspot(ct)
         # ctx.ORE_debug()
 
     def BUILDER_heal_lowest_tile(self, ct):

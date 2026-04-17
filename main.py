@@ -4,8 +4,6 @@ from core import Core
 from builder import Builder
 from turret import Turret
 from utils import *
-import random
-random.seed(100)
 
 class Player:
 	def __init__(self):

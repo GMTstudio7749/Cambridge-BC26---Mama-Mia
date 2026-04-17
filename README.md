@@ -1,8 +1,9 @@
-# Version 3.1
+# Version 4
 
 # Update / Feature
-1. Added RUSH + GUARD
-2. Healing
-3. Enhance Bugnav + Conveyor + Explore
-4. Core upgrade (spawning command) + Expanding
-5. Add Turret: Sentinel + Launcher
+1. Delete Attackable / Defendable info
+2. Improve bugnav + build convey
+3. Improve GUARD, RUSH, TURRET
+4. ECO upgrade: Block + Steal ore
+5. Add MOVE_away to bugnav
+6. Global resource, cost removed from bld_context
