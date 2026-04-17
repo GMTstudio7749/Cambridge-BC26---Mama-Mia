@@ -621,7 +621,7 @@ class BldRush():
                         if(bteam == ct.get_team() and btype == EntityType.LAUNCHER):
                             gotLauncher = True
 
-                    if(not gotLauncher):
+                    if(not gotLauncher and ctx.Glob_Tit > 200):
                         if(ct.can_build_launcher(pos)):
                             ct.build_launcher(pos)
                             break
@@ -638,8 +638,6 @@ class BldRush():
 
         if(self.target_attackable != Position(-1, -1) and self.state == "ATTACK_TARGET_NORMAL" and self.MODE == "CONCENTRATE"):
             if(ctx.Glob_Tit > ctx.Barrier_Cost):
-                
-                
                 if(self.target_attackable == ct.get_position()):
                     for i in Dirs:
                         loc = ct.get_position().add(i)

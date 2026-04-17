@@ -85,3 +85,11 @@ class Builder:
             self.rush.RUSH_run(ct)
         elif self.work == "GUARD":
             self.guard.GUARD_run(ct)
+        self.BUILDER_invariant_action(ct)
+    def BUILDER_invariant_action(self, ct):
+        if(ct.get_position().distance_squared(ctx.CORE_POS) <= 2):
+            for dir in All_Dirs:
+                pos = ct.get_position().add(dir)
+                if(ct.can_build_road(pos)):
+                    ct.build_road(pos)
+                    break

@@ -48,7 +48,7 @@ class Turret():
 		enemy_turrets = [64,Position(-1,-1)]
 		enemy_builds = [64,Position(-1,-1)]
 		enemy_transports = [64,Position(-1,-1)]
-		enemy_core : Position
+		enemy_core : Position = Position(-1, -1)
 		enemy_barriers = [64,Position(-1,-1)]
 		target_type : EntityType
 		target_hp : int
@@ -95,6 +95,8 @@ class Turret():
 			ct.fire(enemy_core)
 		elif enemy_barriers[1] != Position(-1,-1):
 			ct.fire(enemy_barriers[1])
+
+		
 
 	def LAUNCHER_run(self, ct : Controller) :
 		"""Main launcher runner"""

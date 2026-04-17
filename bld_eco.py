@@ -10,6 +10,7 @@ class Explore:
         self.Explore_Dir = Direction.CENTRE
         self.Explore_Target = Position(-1, -1)
         self.Explore_Turn = -1
+        
     
     def EXPLORE_DIR_fix(self, dir: Direction):
         """Fix a direction to diagonal for explore, return a fixed dir"""
@@ -117,6 +118,10 @@ class BldEco:
         self.target_ore = Position(-1, -1)
         self.start_building_pos = Position(-1, -1)
 
+        self.builded_sentinel = Position(-1, -1)
+        self.sentinel_idle_turn = 0
+
+
     #region ----- GET function -----
     def GET_best_seen_ore(self, ct: Controller, cook: str):
         """Get the best seen ore position, shortest distance to ore\n
@@ -185,6 +190,8 @@ class BldEco:
                 type = ct.get_entity_type(ID)
                 if type == EntityType.HARVESTER: continue
                 if ct.get_team(ID) != ctx.MY_TEAM:
+                    if(ctx.bugnav.tooCloseToDanger(ct, check_pos)):
+                        continue
                     if not type in [EntityType.ROAD, EntityType.MARKER]:
                         continue
 
@@ -202,10 +209,12 @@ class BldEco:
         print(f"[State]: {self.state}")
         print(f"Target ore: ({self.target_ore.x},{self.target_ore.y})")
         print(f"Start_building_pos: ({self.start_building_pos.x},{self.start_building_pos.y})")
-        print(f"Last Connect: ({ctx.bugnav.lastConnect.x, ctx.bugnav.lastConnect.y}")
+        if(ctx.bugnav.lastConnect != None):
+            print(f"Last Connect: ({ctx.bugnav.lastConnect.x, ctx.bugnav.lastConnect.y}")
+            ct.draw_indicator_dot(ctx.bugnav.lastConnect, 0, 255, 255)
+
         # Draw
         ct.draw_indicator_dot(self.target_ore, 255, 255, 0)
-        ct.draw_indicator_dot(ctx.bugnav.lastConnect, 0, 255, 255)
     #endregion
 
     #region ----- ECO move / act -----
@@ -237,6 +246,7 @@ class BldEco:
            ONLY work with DISTANCE <= 8 from working ore\n
            Return "HARV" if build harvester, "BLOCK" if build barrier,\n
            "FAIL" if failed, "MORE" if not yet done"""
+
         if ore_pos == Position(-1, -1): return "FAIL"
         harv_check = ctx.CHECK_harvester(ct, ore_pos)
         if harv_check != 0:
@@ -301,12 +311,61 @@ class BldEco:
                 return "HARV"
         return "MORE"
     
+    def CHECK_best_build_sentinel_dir_score(self, ct, pos):
+        bestDir = Direction.CENTRE
+        bestScore = 0
+        for i in Dirs:
+            score = 0
+            for attackPos in ct.get_attackable_tiles_from(pos, i, EntityType.SENTINEL):
+                if(not ct.is_in_vision(attackPos) or not ctx.IS_in_map(attackPos)):
+                    continue
+                bid = ct.get_tile_building_id(attackPos)
+                bbid = ct.get_tile_builder_bot_id(attackPos)
+                btype = ct.get_entity_type(bid)
+                bteam = ct.get_team(bid)
+
+                if(bid == None or bteam == ct.get_team()):
+                    continue
+                if(btype == EntityType.LAUNCHER):
+                    score += 15
+                if(btype == EntityType.BARRIER):
+                    score += 10
+                if(bbid != None):
+                    score += 10
+            if(score > bestScore):
+                bestScore = score
+                bestDir = i
+        return bestDir, bestScore
+                
+
     def ECO_link_back_core(self, ct: Controller, start_build_pos: Position):
         """ECO builder link harvester back to core
         Depends on start build position"""
         # DESTROY under foot blocks first
+
+
         my_pos = ct.get_position()
         if ctx.bugnav.lastConnect != Position(-1, -1):
+            if(ct.get_position().distance_squared(ctx.bugnav.lastConnect) < 2):
+                dir, score = self.CHECK_best_build_sentinel_dir_score(ct, ctx.bugnav.lastConnect)
+                print(dir, score)
+                if score > 20:
+                    if(ct.get_position().distance_squared(ctx.bugnav.lastConnect) == 0):
+                        for i in Dirs:
+                            if(ct.can_move(i)):
+                                ct.move(i)
+                                break
+                    if(ct.can_destroy(ctx.bugnav.lastConnect)):
+                        ct.destroy(ctx.bugnav.lastConnect)
+                    if(ct.can_build_sentinel(ctx.bugnav.lastConnect, dir)):
+                        ct.build_sentinel(ctx.bugnav.lastConnect, dir)
+                        self.builded_sentinel = ctx.bugnav.lastConnect
+                        self.state = "WAIT_FOR_SENTINEL"
+                        self.sentinel_idle_turn = 30
+                        return "SENTINEL"
+                    
+
+
             dis_to_connect = my_pos.distance_squared(ctx.bugnav.lastConnect)
             if dis_to_connect <= 2:
                 ID = ct.get_tile_building_id(my_pos)
@@ -320,10 +379,10 @@ class BldEco:
         link = ctx.bugnav.MOVE_to_target_with_conveyor(ct, start_build_pos, ctx.CORE_POS)
         if link == "STUCK":
             return "STUCK"
-        core_dis = ctx.CORE_POS.distance_squared(ct.get_position())
-        if core_dis <= 2:
-            ctx.bugnav.lastConnect = Position(-1, -1)
-            return "DONE"
+        # core_dis = ctx.CORE_POS.distance_squared(ct.get_position())
+        # if core_dis <= 2:
+        #     ctx.bugnav.lastConnect = Position(-1, -1)
+        #     return "DONE"
     #endregion
 
     #region ----- ECO state -----
@@ -357,6 +416,17 @@ class BldEco:
     
     #endregion
 
+    def ECO_wait_sentinel(self, ct):
+        if(ct.get_position().distance_squared(self.builded_sentinel) > 2):
+            ctx.bugnav.MOVE_to_target(ct, self.builded_sentinel, False)
+        if(self.sentinel_idle_turn <= 0):
+            if(ct.can_destroy(self.builded_sentinel)):
+                ct.destroy(self.builded_sentinel)
+            self.state = "LINK_BACK_CORE"
+            return
+    
+        self.sentinel_idle_turn -= 1
+
     def ECO_run(self, ct: Controller):
         """Main ECO builder function"""
         # SETUP
@@ -372,8 +442,9 @@ class BldEco:
         # WORK
         if self.state == "EXPLORE":
             self.ECO_explore(ct)
-
-        if self.state == "BUILD_AT_ORE":
+        elif(self.state == "WAIT_FOR_SENTINEL"):
+            self.ECO_wait_sentinel(ct)
+        elif self.state == "BUILD_AT_ORE":
             x = self.ECO_build_at_ore(ct, self.target_ore)
             print("BUILD AT ORE:", x)
             if x in ["MARK", "BLOCK", "FAIL"]:
@@ -384,7 +455,7 @@ class BldEco:
             elif x == "HARV":
                 self.state = "LINK_BACK_CORE"
         
-        if self.state == "LINK_BACK_CORE":
+        elif self.state == "LINK_BACK_CORE":
             x = self.ECO_link_back_core(ct, self.start_building_pos)
             print("LINK BACK CORE:", x)
             if x in ["DONE", "STUCK"]:
