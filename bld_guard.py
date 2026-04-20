@@ -43,7 +43,11 @@ class BldGuard():
 
         self.fix_connects = set()
         self.fix_target = Position(-1, -1)
-        
+
+        self.needRedirect = Position(-1, -1)
+
+        self.openingGuard = False
+
     def GUARD_sense_nearby(self, ct):
         self.ally_bots = {}
         self.enemy_bots = {}
@@ -80,8 +84,36 @@ class BldGuard():
 
 
     def DEFENDABLE_update(self, ct):
-        for tile_pos in ct.get_nearby_tiles(13):
+        for tile_pos in ct.get_nearby_tiles(15):
+            if(ct.get_cpu_time_elapsed() > 1200):
+                return
             self.DEFENDABLE_status(ct, tile_pos)
+    
+    def CHECK_enemy_turret_in_ore(self, ct, pos):
+        for dir in Dirs:
+            checkPos = pos.add(dir)
+            if(not ct.is_in_vision(checkPos) or not ctx.IS_in_map(checkPos)):
+                continue
+            bid = ct.get_tile_building_id(checkPos)
+            bteam = ct.get_team(bid)
+            btype = ct.get_entity_type(bid)
+
+            if(bteam != ct.get_team() and btype in TURRET_TYPE):
+                return checkPos
+        return Position(-1, -1)
+
+    def CHECK_ally_turret_in_ore(self, ct, pos):
+        for dir in Dirs:
+            checkPos = pos.add(dir)
+            if(not ct.is_in_vision(checkPos) or not ctx.IS_in_map(checkPos)):
+                continue
+            bid = ct.get_tile_building_id(checkPos)
+            bteam = ct.get_team(bid)
+            btype = ct.get_entity_type(bid)
+
+            if(bteam == ct.get_team() and btype in TURRET_TYPE):
+                return checkPos
+        return Position(-1, -1)
     
     
     def DEFENDABLE_status(self, ct: Controller, defendable_pos: Position):
@@ -94,8 +126,8 @@ class BldGuard():
         best_score = 0
         cur = ct.get_position()
 
-        for dx in range(-15, 15):
-            for dy in range(-15, 15):
+        for dx in range(-10, 10):
+            for dy in range(-10, 10):
                 x = cur.x + dx
                 y = cur.y + dy
 
@@ -106,14 +138,14 @@ class BldGuard():
                 if score > best_score:
                     best_defendable, best_score = self.defendables[x][y].pos, score
         print(best_score)
-        if(best_score > 0):
-            return best_defendable
-        return Position(-1, -1)
+        if(best_score > 8):
+            return best_defendable, best_score
+        return Position(-1, -1), -9999
 
     def IS_connect_broken(self, ct, pos, bid, btype, bteam):
         if(bteam != ct.get_team()):
             return False
-        if(btype != EntityType.CONVEYOR and btype != EntityType.BRIDGE and not (btype == EntityType.HARVESTER and not ctx.CHECK_ore_linked_core(ct, pos))):
+        if(btype != EntityType.CONVEYOR and btype != EntityType.BRIDGE and not (btype == EntityType.HARVESTER)):
             return False
         nextPos = Position(-1, -1)
         if(btype == EntityType.CONVEYOR):
@@ -122,14 +154,26 @@ class BldGuard():
         if(btype == EntityType.BRIDGE):
             nextPos = ct.get_bridge_target(bid)
         if(btype == EntityType.HARVESTER):
+            if(self.GET_start_build_pos(ct, pos) == Position(-1, -1)):
+                return False
+            if(ctx.CHECK_ore_linked_core(ct, pos) and (self.CHECK_enemy_turret_in_ore(ct, pos) == Position(-1, -1) or self.CHECK_ally_turret_in_ore(ct, pos) != Position(-1, -1)) ):
+                return False
+            self.needRedirect = pos
             return True
         if(not ct.is_in_vision(nextPos)):
             return False
+        prevbtype = btype
+        env = ct.get_tile_env(nextPos)
         bid = ct.get_tile_building_id(nextPos)
+        bbid = ct.get_tile_building_id(nextPos)
+        bbteam = ct.get_team(bbid)
         btype = ct.get_entity_type(bid)
         bteam = ct.get_team(bid)
+        if(bteam != ct.get_team() and btype in TURRET_TYPE):
+            self.needRedirect = pos
 
-        if(bteam != ct.get_team() or (btype != EntityType.CONVEYOR and btype != EntityType.BRIDGE and btype != EntityType.CORE and btype != EntityType.FOUNDRY and btype != EntityType.SPLITTER)):
+        if((bteam != ct.get_team() and btype != EntityType.HARVESTER) or ((env not in ORE_ENV and btype != EntityType.HARVESTER and btype != EntityType.CONVEYOR and btype != EntityType.BRIDGE and btype != EntityType.CORE and btype != EntityType.FOUNDRY and btype != EntityType.SPLITTER and btype not in TURRET_TYPE)) and (bbid == None or bbteam != ct.get_team())):
+            ct.draw_indicator_line(ct.get_position(), pos, 255, 0, 255)
             return True
         return False
 
@@ -157,6 +201,15 @@ class BldGuard():
                 if ct.get_team(ID) != ctx.MY_TEAM:
                     if not type in [EntityType.ROAD, EntityType.MARKER]:
                         continue
+                else:
+                    if(type in [EntityType.BRIDGE, EntityType.CONVEYOR]):
+                        nextPos = None
+                        if(type == EntityType.BRIDGE):
+                            nextPos = ct.get_bridge_target(ID)
+                        else:
+                            nextPos = check_pos.add(ct.get_direction(ID))
+                        if(nextPos != ore_pos):
+                            continue
 
             if env != Environment.ORE_TITANIUM: prior = "EMPTY"
             # Compare distance
@@ -175,16 +228,16 @@ class BldGuard():
 
         score = 0
 
-        if(self.IS_connect_broken(ct, defendable_pos, bid, btype, bteam)):
+        if(self.IS_connect_broken(ct, defendable_pos, bid, btype, bteam) and self.ally_bots.get(defendable_pos, 0) == 0):
             self.fix_connects.add(defendable_pos)
         else:
             if(defendable_pos in self.fix_connects):
                 self.fix_connects.remove(defendable_pos)
 
         if(defendable_pos == self.defendable_target):
-            score -= 2
+            score -= 3
 
-        score -= self.ally_bots.get(defendable_pos, 0) * 4
+        score -= self.ally_bots.get(defendable_pos, 0) * 5
         score += ((bmaxhp - bhp) / bmaxhp) * 4
 
         score += self.enemy_bots.get(defendable_pos, 0) * 2
@@ -272,8 +325,9 @@ class BldGuard():
         """Setup for Guardian builder"""
         
         
-        self.HS_Step_From_Core = 0.07 * ct.get_current_round() +5
-
+        self.HS_Step_From_Core = 0.08 * ct.get_current_round() + 5
+        if(ct.get_current_round() <= 10):
+            self.openingGuard = True
 
 
         self.Curr_Spot_Dir = ctx.CORE_DIR
@@ -294,6 +348,7 @@ class BldGuard():
 
 
         # new
+        self.needRedirect = Position(-1, -1)
         self.DEFENDABLE_update(ct)
 
     def GUARD_update_hotspot(self):
@@ -337,6 +392,11 @@ class BldGuard():
         my_pos = ct.get_position()
         cur_dis = my_pos.distance_squared(self.Spot_Target)
         if cur_dis <= self.HS_Accept_Range or self.Spot_Turn < 1:
+            if(not self.openingGuard):
+                self.HS_Step_From_Core = (self.HS_Step_From_Core + 1) % (max(ct.get_map_width(), ct.get_map_height()) / 2)
+            else:
+                if(ct.get_current_round() > 20):
+                    self.HS_Step_From_Core = (self.HS_Step_From_Core + 1) % (max(ct.get_map_width(), ct.get_map_height()) / 4)
             self.Spot_Turn = self.HS_Visit_Turn
             self.Spot_Target = self.GET_next_hotspot(self.HS_Step_From_Core)
 
@@ -358,13 +418,8 @@ class BldGuard():
     #region ----- Guard STATE -----
     def GUARD_wandering(self, ct: Controller):
         """Guardian move to hotspot / wandering for work function"""
-        self.defendable_target = self.GET_best_defendable_target(ct)
-        self.fix_target = self.GET_best_fix_target(ct)
 
-        if(self.fix_target != Position(-1, -1)):
-            self.state = "LINK_BACK_TO_CORE"
-            return
-        elif(self.defendable_target == Position(-1, -1)):
+        if(self.defendable_target == Position(-1, -1)):
             if ct.get_move_cooldown() == 0:
                 self.GUARD_visit_hotspot(ct)
         else:
@@ -402,7 +457,7 @@ class BldGuard():
                         return "FIRING"
 
         # BUILD next conv
-        link = ctx.bugnav.MOVE_to_target_with_conveyor(ct, start_build_pos, ctx.CORE_POS)
+        link = ctx.bugnav.MOVE_to_target_with_conveyor(ct, start_build_pos, ctx.CORE_POS, Position(-1, -1))
         if ctx.bugnav.lastConnect.distance_squared(ctx.CORE_POS) <= 2:
             ctx.bugnav.lastConnect = Position(-1, -1)
             return "DONE"
@@ -412,10 +467,135 @@ class BldGuard():
     #endregion
 
     #region ----- ECO state -----
-    def ECO_switch_explore(self, ct: Controller):
+    def GUARD_switch_explore(self, ct: Controller):
         """Switch state "EXPLORE" immediately in order to save cooldown"""
         self.state = "EXPLORE"
         self.fix_target = Position(-1, -1)
+
+    def GUARD_build_sentinel_in_ore(self, ct):
+        ct.draw_indicator_line(ct.get_position(), self.fix_target, 255, 255, 255)
+        if(ct.get_position().distance_squared(self.fix_target) > 2):
+            ctx.bugnav.MOVE_to_target(ct, self.fix_target, False, dangerousScore= -10)
+        shouldBuild = False
+        if(ct.is_in_vision(self.fix_target)):
+            bid = ct.get_tile_building_id(self.fix_target)
+            btype = ct.get_entity_type(bid)
+            bteam = ct.get_team(bid)
+
+            if(bid != None):
+                if(bteam == ct.get_team() and btype in TURRET_TYPE):
+                    self.GUARD_switch_explore(ct)
+                    return
+                if(bteam != ct.get_team() and btype in TURRET_TYPE):
+                    self.GUARD_switch_explore(ct)
+                    return
+                if( btype != EntityType.ROAD and btype != EntityType.MARKER):
+                    self.GUARD_switch_explore(ct)
+                    return
+                if(bteam != ct.get_team() and btype == EntityType.ROAD):
+                    dir = ct.get_position().direction_to(self.fix_target)
+                    if(ct.can_move(dir)):
+                        ct.move(dir)
+                    if(ct.can_fire(self.fix_target)):
+                        ct.fire(self.fix_target)
+                    bid = ct.get_tile_building_id(self.fix_target)
+                    if(bid == None):
+                        shouldBuild = True
+            else:
+                shouldBuild = True
+                    
+        ct.draw_indicator_line(self.fix_target, ct.get_position(),255, 0, 0)
+        
+        if(ct.can_destroy(self.fix_target)):
+            ct.destroy(self.fix_target)
+
+        if(ct.get_global_resources()[0] < ct.get_sentinel_cost()[0]):
+            return
+        if(shouldBuild):
+            if(ct.get_position().distance_squared(self.fix_target) == 0):
+                ctx.bugnav.MOVE_away_from(ct, self.fix_target)
+
+        if(not ctx.bugnav.tooCloseToDanger(ct, self.fix_target)):
+            if(ct.get_position().distance_squared(self.fix_target) <= 2 ):
+                turret_dir = self.GET_best_turret_dir(ct, self.fix_target, EntityType.SENTINEL)
+                if(ct.can_build_sentinel(self.fix_target, turret_dir)):
+                    ct.build_sentinel(self.fix_target, turret_dir)
+        else:
+            if(ct.get_position().distance_squared(self.fix_target) <= 2):
+                turret_dir = self.GET_best_turret_dir(ct, self.fix_target, EntityType.GUNNER)
+                if(ct.can_build_gunner(self.fix_target, turret_dir)):
+                    ct.build_gunner(self.fix_target, turret_dir)
+
+    def GET_best_turret_dir(self, ct, pos, turretType):
+        bestScore = -9999
+        bestDir = Direction.NORTH
+
+        for dir in Dirs:
+            score = 0
+            if(dir in [Direction.NORTH, Direction.WEST, Direction.EAST, Direction.SOUTH]):
+                checkPos = pos.add(dir)
+                if(not ctx.IS_in_map(checkPos) or not ct.is_in_vision(checkPos)):
+                    continue
+                bid = ct.get_tile_building_id(checkPos)
+                btype = ct.get_entity_type(bid)
+                bteam = ct.get_team(bid)
+
+                if(btype == EntityType.CONVEYOR):
+                    bdir = ct.get_direction(bid)
+                    if(bdir == dir.opposite()):
+                        continue
+                if(btype == EntityType.HARVESTER):
+                    continue
+            
+            for attackPos in ct.get_attackable_tiles_from(pos, dir, turretType):
+                if(not ct.is_in_vision(attackPos) or not ctx.IS_in_map(attackPos)):
+                    continue
+                bid = ct.get_tile_building_id(attackPos)
+                bbid = ct.get_tile_builder_bot_id(attackPos)
+                btype = ct.get_entity_type(bid)
+                bteam = ct.get_team(bid)
+
+                if(bid == None or bteam == ct.get_team()):
+                    continue
+                if(btype in TURRET_TYPE):
+                    score += 15
+                if(btype == EntityType.BARRIER):
+                    score += 5
+                if(bbid != None):
+                    score += 10
+                if(bteam != ct.get_team()):
+                    score += 1
+
+            if(score > bestScore):
+                bestScore = score
+                bestDir = dir
+        return bestDir
+
+    def decide_ore_work(self, ct):
+        ct.draw_indicator_line(ct.get_position(),  self.fix_target, 255, 255, 0)
+        if(ct.get_position().distance_squared(self.fix_target) < 10):
+            bid = ct.get_tile_building_id(self.fix_target)
+            btype = ct.get_entity_type(bid)
+            if(btype == EntityType.HARVESTER):
+                if(ctx.CHECK_ore_linked_core(ct, self.fix_target)):
+                    if self.needRedirect != Position(-1, -1) or (self.CHECK_enemy_turret_in_ore(ct, self.fix_target) != Position(-1, -1) and self.CHECK_ally_turret_in_ore(ct, self.fix_target) == Position(-1, -1)):
+                        self.state = "BUILD_SENTINEL_IN_ORE"
+                        newFixTarget = self.GET_start_build_pos(ct, self.fix_target)
+                        ct.draw_indicator_line(newFixTarget, ct.get_position(),255, 0, 0)
+                        
+                        if(newFixTarget != Position(-1, -1)):
+                            self.fix_target = newFixTarget
+                        else:
+                            self.GUARD_switch_explore(ct)
+                        return
+                    else:
+                        self.GUARD_switch_explore(ct)
+                newFixTarget = self.GET_start_build_pos(ct, self.fix_target)
+                if(newFixTarget != Position(-1, -1)):
+                    self.fix_target = newFixTarget
+                else:
+                    self.GUARD_switch_explore(ct)
+        self.state = "LINK_BACK_TO_CORE"
 
     def GUARD_run(self, ct: Controller):
         """Main GUARDIAN builder function"""
@@ -431,24 +611,29 @@ class BldGuard():
         print("NOW1: ", ct.get_cpu_time_elapsed())
 
         self.GUARD_update_info(ct)
-        if(self.state == "EXPLORE"):
+        self.defendable_target, score = self.GET_best_defendable_target(ct)
+
+        self.fix_target = self.GET_best_fix_target(ct)
+
+        if(self.needRedirect != Position(-1, -1)):
+            self.fix_target = self.needRedirect
+            self.decide_ore_work(ct)
+        elif(self.fix_target != Position(-1, -1) and score < 10):
+            self.decide_ore_work(ct)
+        else:
+            self.state = "EXPLORE"
+
+        if(self.state == "EXPLORE" ):
             self.GUARD_wandering(ct)
         elif(self.state == "LINK_BACK_TO_CORE"):
-            ct.draw_indicator_line(ct.get_position(),  self.fix_target, 255, 255, 0)
-            if(ct.is_in_vision(self.fix_target)):
-                bid = ct.get_tile_building_id(self.fix_target)
-                btype = ct.get_entity_type(bid)
-                if(btype == EntityType.HARVESTER):
-                    if(ctx.CHECK_ore_linked_core(ct, self.fix_target)):
-                        self.state = "EXPLORE"
-                        return
-                    self.fix_target = self.GET_start_build_pos(ct, self.fix_target)
 
             x = self.GUARD_link_back_core(ct, self.fix_target)
             print("LINK BACK CORE:", x)
             if x in ["DONE", "STUCK"]:
-                self.state = "EXPLORE"
+                self.GUARD_switch_explore(ct)
                 return
+        elif(self.state == "BUILD_SENTINEL_IN_ORE"):
+            self.GUARD_build_sentinel_in_ore(ct)
         # WORK
 
 
